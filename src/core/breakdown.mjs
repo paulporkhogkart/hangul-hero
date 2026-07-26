@@ -392,11 +392,24 @@ export function describeChanges(spelling, spoken) {
     .map(({ i, ...c }) => ({ ...c, why: WHY[c.type] ?? null }))
 }
 
-/** A single jamo with everything the panel needs to render and explain it. */
-const describeJamo = (jamo, slot, rr) => ({
+/**
+ * A single jamo, with what it actually contributes to THIS word.
+ *
+ * `fate` is the point. The panel used to print dictionary values, so 쌓 listed its ㅎ as
+ * "t" directly above a sentence saying the ㅎ disappears, and 국 listed a final "k" above
+ * a syllable reading "gu". The letters never added up to the syllable they sat over.
+ *
+ *   kept     contributes its ordinary value
+ *   silent   contributes nothing at all
+ *   moved    a final that left for the next syllable, so nothing is heard here
+ *   arrived  an empty ㅇ that received a consonant from the syllable before
+ *   changed  contributes something other than its usual value
+ */
+const describeJamo = (jamo, slot, rr, fate = 'kept') => ({
   jamo,
   slot,
   rr,
+  fate,
   parts: slot === 'final' ? FINAL_PARTS[jamo] ?? null : slot === 'vowel' ? VOWEL_PARTS[jamo] ?? null : null,
 })
 
@@ -416,19 +429,55 @@ export function breakdown(word, publishedPron) {
   // it was there to explain.
   const spoken = chooseVariant(word, publishedPron)
 
+  // The written form is what the romanization was derived from, and its per-jamo values
+  // are contextual (the ㄹㄹ of 신라 becomes "ll", not "l" + "r"). Reading the letters
+  // back off it is what makes the jamo add up to the syllable above them.
+  const writtenSyl = decomposeWord(written)
+
   const syllables = spelled.map((s, i) => {
     const r = romanized[i]
     if (!s) return { char: word[i], literal: true }
+
+    const w = writtenSyl[i]
+    const part = slot => r?.parts?.find(p => p.slot === slot) ?? null
+
+    const initial = (() => {
+      if (!w) return describeJamo(s.initial, 'initial', INITIAL_RR[s.initial])
+      const value = part('initial')?.rr ?? ''
+      if (s.initial === 'ㅇ' && w.initial !== 'ㅇ') return describeJamo(s.initial, 'initial', value, 'arrived')
+      if (s.initial === 'ㅇ') return describeJamo(s.initial, 'initial', '', 'silent')
+      if (w.initial !== s.initial) return describeJamo(s.initial, 'initial', value, 'changed')
+      return describeJamo(s.initial, 'initial', value)
+    })()
+
+    const vowel = w && w.vowel !== s.vowel
+      ? describeJamo(s.vowel, 'vowel', part('vowel')?.rr ?? VOWEL_RR[w.vowel], 'changed')
+      : describeJamo(s.vowel, 'vowel', part('vowel')?.rr ?? VOWEL_RR[s.vowel])
+
+    const final = !s.final ? null : (() => {
+      if (!w) return describeJamo(s.final, 'final', FINAL_RR[s.final])
+      if (!w.final) {
+        // It contributes nothing HERE, but that is not the same as contributing nothing.
+        // Three fates: it crossed into an empty ㅇ next door, it fused with the consonant
+        // already there (그렇다, where the ㅎ becomes part of the following ㅌ), or it
+        // genuinely stopped being pronounced. Calling the middle one silent was wrong:
+        // the ㅎ is the entire reason the next syllable is ta and not da.
+        const nextSpelled = spelled[i + 1]
+        const nextWritten = writtenSyl[i + 1]
+        const gaveSomething = nextSpelled && nextWritten && nextWritten.initial !== nextSpelled.initial
+        if (!gaveSomething) return describeJamo(s.final, 'final', '', 'silent')
+        return describeJamo(s.final, 'final', '', nextSpelled.initial === 'ㅇ' ? 'moved' : 'fused')
+      }
+      if (w.final !== s.final) return describeJamo(s.final, 'final', part('final')?.rr ?? FINAL_RR[w.final], 'changed')
+      return describeJamo(s.final, 'final', part('final')?.rr ?? FINAL_RR[s.final])
+    })()
+
     return {
       char: s.ch,
       spoken: [...spoken][i] ?? null,
       rr: r?.rr ?? '',
       changed: (r?.ch ?? s.ch) !== s.ch,
-      jamo: [
-        describeJamo(s.initial, 'initial', INITIAL_RR[s.initial]),
-        describeJamo(s.vowel, 'vowel', VOWEL_RR[s.vowel]),
-        ...(s.final ? [describeJamo(s.final, 'final', FINAL_RR[s.final])] : []),
-      ],
+      jamo: [initial, vowel, ...(final ? [final] : [])],
     }
   })
 

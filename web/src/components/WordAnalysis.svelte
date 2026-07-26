@@ -57,13 +57,28 @@
           {#if open}
             <div class="jamo">
               {#each s.jamo as j, k}
-                <span class="j" class:wrong={errorAt && errorAt.syllable === i && errorAt.jamo === k}>
+                <span
+                  class="j {j.fate}"
+                  class:wrong={errorAt && errorAt.syllable === i && errorAt.jamo === k}
+                >
                   <b class="kr">{j.jamo}</b>
-                  <!-- A silent ㅇ makes no sound, and the word "silent" is four times
-                       wider than any romanization, which dragged its whole column out
-                       of line with the rest. Two dots say the same thing in the space
-                       the value would have taken. -->
-                  <i class:none={!j.rr} title={j.rr ? null : 'makes no sound'}>{j.rr || '··'}</i>
+                  <!--
+                    What this jamo contributes to THIS word, not its dictionary value.
+                    A final that crossed into the next syllable shows an arrow rather
+                    than a letter it does not supply here, and one that stopped being
+                    pronounced shows nothing at all. The letters in a column now add up
+                    to the syllable printed under them.
+                  -->
+                  <i
+                    class:none={!j.rr}
+                    title={j.fate === 'moved' ? 'moves into the next syllable'
+                      : j.fate === 'fused' ? 'merges into the next consonant'
+                      : j.fate === 'arrived' ? 'carried over from the syllable before'
+                      : j.fate === 'silent' ? 'makes no sound here'
+                      : null}
+                  >{j.fate === 'moved' || j.fate === 'fused' ? '→'
+                    : j.fate === 'arrived' ? `←${j.rr}`
+                    : (j.rr || '··')}</i>
                 </span>
               {/each}
             </div>
@@ -138,6 +153,11 @@
   .j b { font-weight: 400; font-size: 15px; color: #8d8b85; }
   .j i { font-style: normal; font-size: 11px; color: var(--dimmer); }
   .j i.none { opacity: .55; letter-spacing: .08em; }
+  /* A jamo that is doing something out of the ordinary is worth spotting before the
+     prose underneath is read. */
+  .j.moved i, .j.fused i, .j.arrived i { color: var(--accent); opacity: .8; }
+  .j.changed i { color: var(--accent); opacity: .95; }
+  .j.silent b { opacity: .5; }
   .j.wrong { background: rgba(212, 102, 79, .14); }
   .j.wrong b { color: var(--bad); }
   .j.wrong i { color: var(--bad); opacity: .8; }
