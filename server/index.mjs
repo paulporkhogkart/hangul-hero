@@ -314,7 +314,35 @@ const MIME = {
   '.woff2': 'font/woff2', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.ico': 'image/x-icon',
 }
 
+/**
+ * Discord builds its preview card from whatever metadata a page exposes: og: tags, and
+ * failing those the plain <title> and description. There is no header or meta tag that
+ * says "do not embed", so the only way to have no card is to give its crawler nothing to
+ * build one from.
+ *
+ * Answering its fetch with a bare document does exactly that, and touches nobody else:
+ * real browsers, search engines and every other unfurler still get the full page. The
+ * alternative is remembering to wrap the URL in angle brackets every single time it is
+ * pasted, which is not a thing anyone remembers.
+ */
+const DISCORD_CRAWLER = /Discordbot/i
+const isDiscordCrawler = req => DISCORD_CRAWLER.test(req.headers['user-agent'] ?? '')
+
+const BARE_PAGE = '<!doctype html><html lang="en"><head><meta charset="utf-8"></head><body></body></html>'
+
 async function serveStatic(req, res, pathname) {
+  // The path has already been rewritten to /index.html by this point, so testing only
+  // for "no extension" never matched the one request that mattered.
+  const isPage = !extname(pathname) || extname(pathname) === '.html'
+  if (isDiscordCrawler(req) && isPage) {
+    res.writeHead(200, {
+      'content-type': 'text/html; charset=utf-8',
+      'content-length': Buffer.byteLength(BARE_PAGE),
+      'cache-control': 'no-store',
+    })
+    return res.end(BARE_PAGE)
+  }
+
   if (!existsSync(STATIC_DIR)) {
     res.writeHead(503, { 'content-type': 'text/plain; charset=utf-8' })
     return res.end('The site has not been built yet. Run: npm run build')

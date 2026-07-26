@@ -44,7 +44,10 @@ describe('single rule words are unaffected by the ordering', () => {
   for (const [word, pron, title] of [
     ['한국어', '한구거', 'Liaison'],
     ['신라', '실라', 'ㄴ becomes ㄹ'],
-    ['같이', '가치', 'Liaison'],
+    // The statute lists 같이 under 구개음화, and it is not plain liaison: the consonant
+    // changes as it crosses. This assertion used to say Liaison and was wrong.
+    ['같이', '가치', 'Palatalisation'],
+    ['해돋이', '해도지', 'Palatalisation'],
     ['좋다', '조타', 'Aspiration'],
     ['학교', '학꾜', 'Tensing'],
     ['값', '갑', 'Only one can close'],

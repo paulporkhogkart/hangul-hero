@@ -128,15 +128,52 @@ export function describeChanges(spelling, spoken) {
       if (wholeMoved || halfMoved) {
         const moved = wholeMoved ? prev.final : pair[1]
         const tensed = TENSE[p.initial] && TENSE[p.initial] === moved
-        out.push({
-          at: i,
-          type: 'liaison',
-          reflected: true,
-          title: 'Liaison',
-          text: halfMoved
+
+        /*
+         * The consonant crossed the boundary AND changed on the way. Reporting only the
+         * move leaves an explanation that contradicts itself: "the ㄷ slides across" next
+         * to a syllable that plainly starts with ㅈ. 해돋이 and 같이 are the statute's own
+         * examples of 구개음화, and both were being announced as ordinary liaison.
+         */
+        if ((p.initial === 'ㅈ' || p.initial === 'ㅊ') && s.vowel === 'ㅣ' && ['ㄷ', 'ㅌ'].includes(moved)) {
+          out.push({
+            at: i,
+            type: 'palatalisation',
+            reflected: true,
+            title: 'Palatalisation',
+            text: `${prev.ch} ends in ${moved} and ${s.ch} opens with the silent ㅇ, so the ${moved} slides across. It lands directly in front of ㅣ, which drags it forward in the mouth until it comes out as ${p.initial}, so ${prev.ch}${s.ch} is read as ${prevP.ch}${p.ch}.`,
+          })
+          continue
+        }
+
+        /*
+         * What arrives is not always what left, and saying "the ㅌ slides across" beside
+         * a syllable starting with ㄷ is a contradiction the reader has to resolve alone.
+         * Three ways a consonant changes in transit, each needing its own sentence.
+         */
+        const arriving = p.initial
+        const writtenPair = FINAL_PARTS[moved]
+        let text
+
+        // Arriving tensed is still the same consonant. Tensing has its own entry
+        // directly below, so the liaison sentence should not pretend it changed.
+        if (arriving === moved || TENSE[arriving] === moved) {
+          text = halfMoved
             ? `${prev.ch} ends in the pair ${pair[0]}+${pair[1]}, and only one consonant can close a syllable. ${s.ch} opens with the silent ㅇ, so the ${pair[0]} stays behind and the ${pair[1]} slides across into it.`
-            : `${prev.ch} ends in ${prev.final} and ${s.ch} opens with the silent ㅇ, so the ${prev.final} slides across and is read as the start of ${p.ch}.`,
-        })
+            : `${prev.ch} ends in ${prev.final} and ${s.ch} opens with the silent ㅇ, so the ${prev.final} slides across and is read as the start of ${p.ch}.`
+        } else if (writtenPair && writtenPair.includes(arriving) && writtenPair.includes('ㅎ')) {
+          // 많이, 싫어하다: the ㅎ half of the pair simply gives up before a vowel.
+          text = `${prev.ch} ends in the pair ${writtenPair[0]}+${writtenPair[1]}. A ㅎ has nothing to do in front of a vowel, so it falls silent, and the ${arriving} slides across into ${s.ch} instead, giving ${p.ch}.`
+        } else if (closedOf(moved) === arriving) {
+          // 맛있다, 끝없다: 표준발음법 제15항. Before a word that stands on its own, the
+          // final closes to its neutral value FIRST and that is what moves. It is why
+          // 맛이 is 마시 but 맛있다 is 마딛따, which otherwise looks like an inconsistency.
+          text = `${prev.ch} ends in ${moved}, but what follows is a whole word rather than an ending, so the ${moved} first closes to its plain ${arriving} and it is that which slides across, giving ${p.ch}.`
+        } else {
+          text = `${prev.ch} ends in ${moved} and ${s.ch} opens with the silent ㅇ, so the sound moves across, arriving as ${arriving} in ${p.ch}.`
+        }
+
+        out.push({ at: i, type: 'liaison', reflected: true, title: 'Liaison', text })
         if (tensed) {
           out.push({
             at: i,
