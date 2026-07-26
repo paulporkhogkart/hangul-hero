@@ -26,16 +26,15 @@
   const results = []
 
   /**
-   * The ladder. Each rung costs more and gives a different KIND of help, which is what
-   * stops the cheap path from making the expensive one pointless.
+   * The ladder. Each rung is charged for what it actually reveals.
    *
-   *   miss 1   +1s   where you went wrong. Light, because a typo should not be punished.
-   *   miss 2   +2s   why, and which jamo. Still never the answer.
-   *   miss 3+  +3s   nothing new. It just hurts.
-   *   Tab     +30s   the answer itself, instantly, with no attempt required.
+   *   miss 1   +5s    where you went wrong, without saying what is right
+   *   miss 2   +25s   the jamo and the rules, which is nearly the whole answer
+   *   miss 3+  free   nothing new is shown, so nothing more is charged
+   *   Tab      +30s   the answer itself, with no attempt spent earning it
    *
-   * Climbing the whole hint ladder costs 3s and never reveals the answer, so the two are
-   * genuinely different choices rather than one dominating the other.
+   * Two misses cost 30s and Tab costs 30s, which is the point: they are worth about the
+   * same, so they should cost about the same and the choice between them is real.
    */
   const REVEAL_PENALTY = REVEAL_PENALTY_MS
 
