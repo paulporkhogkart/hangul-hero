@@ -77,6 +77,8 @@ const WHY = {
     'Closing a syllable means stopping the air, and stopping it only has so many distinct positions. The fine differences between ㅅ, ㅈ, ㅊ, ㅌ and ㅎ live in how they are released, and a closed syllable never releases them.',
   vowelheld:
     'Spelling here follows the word rather than the mouth. Keeping it constant means the same word looks the same everywhere, whoever is saying it and however carefully.',
+  glideeaten:
+    'A y glide is a movement toward the hard palate. After a consonant already made there the tongue has nowhere to travel from, so the glide never becomes audible.',
 }
 
 /**
@@ -293,6 +295,21 @@ export function describeChanges(spelling, spoken) {
         text: pair
           ? `${s.ch} ends in the pair ${pair[0]}+${pair[1]}, but only one consonant may close a syllable. Nothing follows for the ${pair[1]} to move into, so it is simply dropped and only the ${p.final} is heard.`
           : `Only seven sounds may close a Korean syllable, and ${s.final} is not one of them. With nothing following to rescue it, ${s.ch} closes as ${p.final} instead.`,
+      })
+      continue
+    }
+
+    // ── 져 said as 저 ─────────────────────────────────────────────────────
+    // 표준발음법 제5항 다만 1. In a conjugated verb, 져/쪄/쳐 are said 저/쩌/처.
+    // These seven words changed sound with nothing said about it, which reads as a bug
+    // in the panel rather than as a rule of the language.
+    if (s.vowel === 'ㅕ' && p.vowel === 'ㅓ' && ['ㅈ', 'ㅉ', 'ㅊ'].includes(s.initial)) {
+      out.push({
+        at: i,
+        type: 'glideeaten',
+        reflected: true,
+        title: 'The y is swallowed',
+        text: `${s.initial} is already made with the tongue flat against the roof of the mouth, which is exactly where the y of ㅕ would go. There is nothing left for it to do, so ${s.ch} is simply read as ${p.ch}.`,
       })
       continue
     }

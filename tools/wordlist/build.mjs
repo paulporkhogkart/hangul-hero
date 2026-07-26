@@ -5,7 +5,7 @@ import { readFile, writeFile, readdir, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadCandidates } from './candidates.mjs'
-import { romanize, romanizePronunciation, toWrittenForm, normalize, variantsAreAmbiguous, splitVariants } from '../../src/core/rr.mjs'
+import { romanize, romanizePronunciation, toWrittenForm, normalize, variantsAreAmbiguous, splitVariants, isNominal } from '../../src/core/rr.mjs'
 import { syllableCount } from '../../src/core/hangul.mjs'
 
 const p = f => fileURLToPath(new URL(f, import.meta.url))
@@ -78,9 +78,13 @@ for (const c of candidates) {
   const sense = entry.senses.find(s => s.transWord) ?? entry.senses[0]
   if (!sense?.transWord) { stats.noGloss++; review.push({ word: c.word, why: 'no English translation' }); continue }
 
+  // The 체언 exception needs the part of speech, so it has to be decided here where we
+  // have it, not inside the romanizer.
+  const nominal = isNominal(entry.pos ?? c.pos)
+
   // toWrittenForm falls back to the raw pronunciation when it cannot align the two
   // syllable by syllable. That fallback is not safe to ship, so flag it instead.
-  const written = toWrittenForm(c.word, entry.pron)
+  const written = toWrittenForm(c.word, entry.pron, { nominal })
   if (syllableCount(written) !== syllableCount(c.word)) {
     stats.lenMismatch++
     review.push({ word: c.word, pron: entry.pron, why: 'pronunciation does not align with spelling' })
@@ -93,7 +97,7 @@ for (const c of candidates) {
   const ambiguous = variantsAreAmbiguous(c.word, entry.pron)
   if (ambiguous) stats.ambiguousPron++
 
-  const { rr, syllables } = romanize(c.word, entry.pron)
+  const { rr, syllables } = romanize(c.word, entry.pron, { nominal })
   if (!rr || /[^a-z]/i.test(rr)) {
     review.push({ word: c.word, pron: entry.pron, rr, why: 'romanization produced non-latin output' })
     continue
@@ -110,7 +114,7 @@ for (const c of candidates) {
   // for a word with two officially permitted pronunciations, both of them.
   const accept = [...new Set(
     ambiguous
-      ? splitVariants(entry.pron).map(v => romanizePronunciation(toWrittenForm(c.word, v)).rr)
+      ? splitVariants(entry.pron).map(v => romanizePronunciation(toWrittenForm(c.word, v, { nominal })).rr)
       : [rr],
   )]
 
@@ -163,13 +167,18 @@ console.log(`\nCROSS-CHECK vs Wiktionary romanization, over ${withWik.length.toL
 console.log(`  agree  : ${agreeRoman.length.toLocaleString()}  ${pct(agreeRoman.length, withWik.length)}`)
 console.log(`  differ : ${(withWik.length - agreeRoman.length).toLocaleString()}`)
 
+// The cross-check has to run the other source through the SAME pipeline, nominal flag
+// included, or every 체언 shows up as a disagreement with itself.
+const nominalOf = w => isNominal(w.pos)
+const throughPipeline = w => normalize(romanizePronunciation(toWrittenForm(w.word, w.xref.wikPron, { nominal: nominalOf(w) })).rr)
+
 const withWikPron = words.filter(w => w.xref.wikPron)
-const agreePron = withWikPron.filter(w => normalize(romanizePronunciation(toWrittenForm(w.word, w.xref.wikPron)).rr) === normalize(w.rr))
+const agreePron = withWikPron.filter(w => throughPipeline(w) === normalize(w.rr))
 console.log(`\nCROSS-CHECK vs Wiktionary pronunciation (put through the same pipeline), over ${withWikPron.length.toLocaleString()}`)
 console.log(`  agree  : ${agreePron.length.toLocaleString()}  ${pct(agreePron.length, withWikPron.length)}`)
 console.log(`  differ : ${(withWikPron.length - agreePron.length).toLocaleString()}`)
 
-const disagreements = withWikPron.filter(w => normalize(romanizePronunciation(toWrittenForm(w.word, w.xref.wikPron)).rr) !== normalize(w.rr))
+const disagreements = withWikPron.filter(w => throughPipeline(w) !== normalize(w.rr))
 await writeFile(join(OUT, 'disagreements.json'), JSON.stringify(
   disagreements.map(w => ({ word: w.word, ours: w.rr, niklPron: w.pron, wikPron: w.xref.wikPron, wikRoman: w.xref.wikRoman })), null, 1))
 console.log(`\nwrote data/words.json, data/review-queue.json (${review.length.toLocaleString()}), data/disagreements.json (${disagreements.length.toLocaleString()})`)

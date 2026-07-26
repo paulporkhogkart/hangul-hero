@@ -8075,12 +8075,12 @@
  },
  {
   "word": "역할",
-  "rr": "yeokal",
+  "rr": "yeokhal",
   "accept": [
-   "yeokal"
+   "yeokhal"
   ],
   "pron": "여칼",
-  "written": "여칼",
+  "written": "역할",
   "meaning": "role; part",
   "definition": "Activities assigned to someone or that he/she has to do.",
   "pos": "명사",
@@ -20440,12 +20440,12 @@
  },
  {
   "word": "국회",
-  "rr": "gukoe",
+  "rr": "gukhoe",
   "accept": [
-   "gukoe"
+   "gukhoe"
   ],
   "pron": "구쾨/구퀘",
-  "written": "구쾨",
+  "written": "국회",
   "meaning": "National Assembly; Congress; Parliament",
   "definition": "A government body composed of lawmakers representing the people, which is in charge of making laws and supervising the Executive and Judiciary branches.",
   "pos": "명사",
@@ -35752,12 +35752,12 @@
  },
  {
   "word": "백화점",
-  "rr": "baekwajeom",
+  "rr": "baekhwajeom",
   "accept": [
-   "baekwajeom"
+   "baekhwajeom"
   ],
   "pron": "배콰점",
-  "written": "배콰점",
+  "written": "백화점",
   "meaning": "department store",
   "definition": "A large retail store divided into departments selling a great many kinds of goods in one building.",
   "pos": "명사",
@@ -36434,12 +36434,12 @@
  },
  {
   "word": "입학",
-  "rr": "ipak",
+  "rr": "iphak",
   "accept": [
-   "ipak"
+   "iphak"
   ],
   "pron": "이팍",
-  "written": "이팍",
+  "written": "입학",
   "meaning": "admission to a school; entrance into a school",
   "definition": "Starting to go to a school as a new student.",
   "pos": "명사",
@@ -36478,12 +36478,12 @@
  },
  {
   "word": "직후",
-  "rr": "jiku",
+  "rr": "jikhu",
   "accept": [
-   "jiku"
+   "jikhu"
   ],
   "pron": "지쿠",
-  "written": "지쿠",
+  "written": "직후",
   "meaning": "next; following",
   "definition": "Something that comes right after another.",
   "pos": "명사",
@@ -89389,12 +89389,12 @@
  },
  {
   "word": "축하",
-  "rr": "chuka",
+  "rr": "chukha",
   "accept": [
-   "chuka"
+   "chukha"
   ],
   "pron": "추카",
-  "written": "추카",
+  "written": "축하",
   "meaning": "congratulations; celebration",
   "definition": "An act of greeting someone with pleasure, commenting on his/her happy occasion, achievement, etc., or such a greeting.",
   "pos": "명사",
@@ -106527,12 +106527,12 @@
  },
  {
   "word": "녹화",
-  "rr": "nokwa",
+  "rr": "nokhwa",
   "accept": [
-   "nokwa"
+   "nokhwa"
   ],
   "pron": "노콰",
-  "written": "노콰",
+  "written": "녹화",
   "meaning": "video recording",
   "definition": "An act of storing real images or motions on a device in order to watch them again later.",
   "pos": "명사",
@@ -111543,12 +111543,12 @@
  },
  {
   "word": "약혼녀",
-  "rr": "yakonnyeo",
+  "rr": "yakhonnyeo",
   "accept": [
-   "yakonnyeo"
+   "yakhonnyeo"
   ],
   "pron": "야콘녀",
-  "written": "야콘녀",
+  "written": "약혼녀",
   "meaning": "fiancee; bride-to-be",
   "definition": "A woman that one has promised to marry.",
   "pos": "명사",
@@ -111785,12 +111785,12 @@
  },
  {
   "word": "약혼자",
-  "rr": "yakonja",
+  "rr": "yakhonja",
   "accept": [
-   "yakonja"
+   "yakhonja"
   ],
   "pron": "야콘자",
-  "written": "야콘자",
+  "written": "약혼자",
   "meaning": "fiance; fiancee; the engaged person",
   "definition": "A person who one has promised to marry.",
   "pos": "명사",
@@ -114271,12 +114271,12 @@
  },
  {
   "word": "국화",
-  "rr": "gukwa",
+  "rr": "gukhwa",
   "accept": [
-   "gukwa"
+   "gukhwa"
   ],
   "pron": "구콰",
-  "written": "구콰",
+  "written": "국화",
   "meaning": "chrysanthemum",
   "definition": "An autumn flower that has white or yellow petals, a long stem, and a nice smell.",
   "pos": "명사",
@@ -120849,12 +120849,12 @@
  },
  {
   "word": "북한",
-  "rr": "bukan",
+  "rr": "bukhan",
   "accept": [
-   "bukan"
+   "bukhan"
   ],
   "pron": "부칸",
-  "written": "부칸",
+  "written": "북한",
   "meaning": "Bukhan",
   "definition": "North Korea: The region north of the Military Demarcation Line in Korea.",
   "pos": "명사",
@@ -124501,12 +124501,12 @@
  },
  {
   "word": "식후",
-  "rr": "siku",
+  "rr": "sikhu",
   "accept": [
-   "siku"
+   "sikhu"
   ],
   "pron": "시쿠",
-  "written": "시쿠",
+  "written": "식후",
   "meaning": "after a meal",
   "definition": "After eating a meal.",
   "pos": "명사",
@@ -125183,12 +125183,12 @@
  },
  {
   "word": "악화",
-  "rr": "akwa",
+  "rr": "akhwa",
   "accept": [
-   "akwa"
+   "akhwa"
   ],
   "pron": "아콰",
-  "written": "아콰",
+  "written": "악화",
   "meaning": "aggravation; worsening",
   "definition": "A state in which an incident or situation proceed in a wrong direction.",
   "pos": "명사",
@@ -125689,12 +125689,12 @@
  },
  {
   "word": "약혼",
-  "rr": "yakon",
+  "rr": "yakhon",
   "accept": [
-   "yakon"
+   "yakhon"
   ],
   "pron": "야콘",
-  "written": "야콘",
+  "written": "약혼",
   "meaning": "engagement; betrothal",
   "definition": "An official promise to marry someone.",
   "pos": "명사",
@@ -128109,12 +128109,12 @@
  },
  {
   "word": "음악회",
-  "rr": "eumakoe",
+  "rr": "eumakhoe",
   "accept": [
-   "eumakoe"
+   "eumakhoe"
   ],
   "pron": "으마쾨/으마퀘",
-  "written": "으마쾨",
+  "written": "으막회",
   "meaning": "music concert",
   "definition": "A gathering organized so that people can listen to music being played live.",
   "pos": "명사",
@@ -129077,12 +129077,12 @@
  },
  {
   "word": "입학시험",
-  "rr": "ipaksiheom",
+  "rr": "iphaksiheom",
   "accept": [
-   "ipaksiheom"
+   "iphaksiheom"
   ],
   "pron": "이팍씨험",
-  "written": "이팍시험",
+  "written": "입학시험",
   "meaning": "admission test; entrance examination",
   "definition": "The examination taken by the applicants of a school to be selected as new students.",
   "pos": "명사",
@@ -129099,12 +129099,12 @@
  },
  {
   "word": "입학식",
-  "rr": "ipaksik",
+  "rr": "iphaksik",
   "accept": [
-   "ipaksik"
+   "iphaksik"
   ],
   "pron": "이팍씩",
-  "written": "이팍식",
+  "written": "입학식",
   "meaning": "entrance ceremony",
   "definition": "The ceremony for new students who first go to a school.",
   "pos": "명사",

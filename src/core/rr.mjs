@@ -118,11 +118,55 @@ export function variantsAreAmbiguous(spelling, pronunciation) {
  * untouched. Spelling and pronunciation always carry the same syllable count, which
  * is what makes the positional comparison safe.
  */
-export function toWrittenForm(spelling, pronunciation) {
+/** Aspirates, and the plain stop each one is a ㅎ fused with. */
+const UNASPIRATE = { 'ㅋ': 'ㄱ', 'ㅌ': 'ㄷ', 'ㅍ': 'ㅂ' }
+
+/**
+ * 제3장 제1항 4 다만: in a 체언, a ㅎ following ㄱ, ㄷ or ㅂ is written out rather than
+ * fused. 묵호 is Mukho and not Muko, 축하 is chukha and not chuka.
+ *
+ * The fusion has already happened by the time we see a pronunciation, so this cannot be
+ * derived from sound alone: it needs to know the word is a nominal. That is why the
+ * exception went unimplemented for so long, and why 17 shipping words were wrong.
+ *
+ * Applies only where the spelling actually has stop + ㅎ across the boundary, so it can
+ * never invent an h that was not written.
+ */
+function keepWrittenH(sp, pr, i) {
+  const prev = sp[i - 1], s = sp[i], p = pr[i], prevP = pr[i - 1]
+  if (!prev || !s || !p || !prevP) return null
+  if (s.initial !== 'ㅎ') return null
+  const plain = UNASPIRATE[p.initial]
+  if (!plain) return null
+  // The spelling's own final must be that stop, or close as it (묵호 ㄱ, 잡히 ㅂ).
+  const prevFinal = prev.final
+  if (!prevFinal) return null
+  const closed = { 'ㄲ': 'ㄱ', 'ㅋ': 'ㄱ', 'ㅅ': 'ㄷ', 'ㅆ': 'ㄷ', 'ㅈ': 'ㄷ', 'ㅊ': 'ㄷ', 'ㅌ': 'ㄷ', 'ㅍ': 'ㅂ' }[prevFinal] ?? prevFinal
+  if (closed !== plain) return null
+  return { prevFinal, initial: 'ㅎ' }
+}
+
+/**
+ * @param {object} [opts]
+ * @param {boolean} [opts.nominal] the word is a 체언, which changes how ㅎ is written
+ */
+export function toWrittenForm(spelling, pronunciation, opts = {}) {
   const pron = chooseVariant(spelling, pronunciation)
   const sp = decomposeWord(spelling)
   const pr = decomposeWord(pron)
   if (sp.length !== pr.length) return pron // fall back rather than guess at an alignment
+
+  // Undoing a fusion changes two syllables at once, so collect the repairs first.
+  const restoreFinal = new Map()
+  const restoreInitial = new Map()
+  if (opts.nominal) {
+    for (let i = 1; i < sp.length; i++) {
+      const fix = keepWrittenH(sp, pr, i)
+      if (!fix) continue
+      restoreFinal.set(i - 1, fix.prevFinal)
+      restoreInitial.set(i, fix.initial)
+    }
+  }
 
   return pr
     .map((p, i) => {
@@ -131,14 +175,20 @@ export function toWrittenForm(spelling, pronunciation) {
       let { initial, vowel, final } = p
       if (DETENSE[initial] && !DETENSE[s.initial]) initial = DETENSE[initial]
       if (s.vowel === 'ㅚ' || s.vowel === 'ㅢ') vowel = s.vowel
+      if (restoreInitial.has(i)) initial = restoreInitial.get(i)
+      if (restoreFinal.has(i)) final = restoreFinal.get(i)
       return compose({ initial, vowel, final })
     })
     .join('')
 }
 
+/** Parts of speech that count as 체언 for the written-ㅎ exception. */
+const NOMINAL_POS = new Set(['명사', '고유 명사', '대명사', '수사', '의존 명사'])
+export const isNominal = pos => NOMINAL_POS.has(pos)
+
 /** Spelling + published pronunciation -> official RR. The one entry point callers want. */
-export function romanize(spelling, pronunciation) {
-  return romanizePronunciation(toWrittenForm(spelling, pronunciation))
+export function romanize(spelling, pronunciation, opts = {}) {
+  return romanizePronunciation(toWrittenForm(spelling, pronunciation, opts))
 }
 
 /**

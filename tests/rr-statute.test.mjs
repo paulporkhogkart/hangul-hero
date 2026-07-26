@@ -93,17 +93,55 @@ describe('제3장 제1항 붙임 - 된소리되기 is NOT reflected', () => {
   ])
 })
 
-describe('KNOWN GAP - 제3장 제1항 다만, nominals keep a written ㅎ', () => {
+describe('제3장 제1항 다만 - a 체언 keeps its written ㅎ', () => {
   // The statute exempts 체언 from the aspiration rule, so 묵호 is Mukho and not "Muko".
-  // Nothing in a pronunciation string says whether a word is a 체언, so this needs the
-  // part of speech, which we have from krdict but have not wired in yet. Marked todo
-  // rather than deleted, so it stays visible instead of quietly not being handled.
+  // A pronunciation cannot tell you whether a word is a 체언, so this needs the part of
+  // speech, which 국립국어원 gives us for every word.
   for (const [spelling, pron, expected] of [
     ['묵호', '무코', 'Mukho'],
     ['집현전', '지편전', 'Jiphyeonjeon'],
   ]) {
-    test(`${spelling} [${pron}] -> ${expected}`, { todo: 'needs the 체언 exception' }, () => {
-      assert.equal(normalize(romanize(spelling, pron).rr), normalize(expected))
+    test(`${spelling} [${pron}] -> ${expected}`, () => {
+      assert.equal(normalize(romanize(spelling, pron, { nominal: true }).rr), normalize(expected))
     })
   }
+
+  // Real words from the shipping list that were wrong until this was implemented.
+  for (const [spelling, pron, expected] of [
+    ['축하', '추카', 'chukha'],
+    ['입학', '이팍', 'iphak'],
+    ['국회', '구쾨', 'gukhoe'],
+    ['역할', '여칼', 'yeokhal'],
+    ['백화점', '배콰점', 'baekhwajeom'],
+    ['북한', '부칸', 'Bukhan'],
+    ['음악회', '으마쾨', 'eumakhoe'],
+  ]) {
+    test(`${spelling} [${pron}] -> ${expected}`, () => {
+      assert.equal(normalize(romanize(spelling, pron, { nominal: true }).rr), normalize(expected))
+    })
+  }
+
+  // A predicate in the same shape must NOT keep the ㅎ: 좋고 is joko, not "johgo".
+  for (const [spelling, pron, expected] of [
+    ['축하하다', '추카하다', 'chukahada'],
+    ['생각하다', '생가카다', 'saenggakada'],
+    ['잡히다', '자피다', 'japida'],
+  ]) {
+    test(`${spelling} is a predicate, so the ㅎ fuses: ${expected}`, () => {
+      assert.equal(normalize(romanize(spelling, pron, { nominal: false }).rr), normalize(expected))
+    })
+  }
+
+  test('the exception never invents an h the spelling does not have', () => {
+    // No stop + ㅎ boundary anywhere in these, so being a nominal changes nothing.
+    assert.equal(normalize(romanize('학교', '학꾜', { nominal: true }).rr), 'hakgyo')
+    assert.equal(normalize(romanize('한국어', '한구거', { nominal: true }).rr), 'hangugeo')
+    assert.equal(normalize(romanize('사람', '사람', { nominal: true }).rr), 'saram')
+  })
+
+  test('특히 is an adverb, so its ㅎ fuses like any other predicate', () => {
+    // It has the stop + ㅎ shape, which is exactly why the part of speech has to decide
+    // and not the shape alone.
+    assert.equal(normalize(romanize('특히', '트키', { nominal: false }).rr), 'teuki')
+  })
 })
