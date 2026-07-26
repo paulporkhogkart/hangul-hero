@@ -1,0 +1,31 @@
+{
+  "name": "hangul-hero",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Read Korean, type the romanization, race the clock.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:next": "vite build --outDir dist-next",
+    "server": "node --env-file=.env.local server/index.mjs",
+    "start": "node server/index.mjs",
+    "design": "node design/serve.mjs",
+    "test": "npm run lint:dashes && node --test \"tests/**/*.test.mjs\"",
+    "lint:dashes": "node tools/check-no-emdash.mjs",
+    "backup": "node tools/backup-db.mjs",
+    "tts:sample": "node --env-file=.env.local tools/tts-sample.mjs",
+    "tts:build": "node --env-file=.env.local tools/tts-build.mjs",
+    "words:fetch": "node --env-file=.env.local tools/wordlist/fetch-krdict.mjs",
+    "words:build": "node tools/wordlist/build.mjs",
+    "words:verify": "node tools/wordlist/verify.mjs"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.2.0",
+    "svelte": "^5.56.8",
+    "vite": "^8.1.5"
+  }
+}

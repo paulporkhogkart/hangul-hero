@@ -1,0 +1,10 @@
+# The pronunciation pack is a build artefact of tools/tts-build.mjs, but it ships with
+# the app: the Pi should never need an Azure credential just to say a word out loud.
+# One LFS object rather than 6,153 loose files keeps checkout to a single transfer and
+# keeps the binary out of ordinary git history, which matters if the voice ever changes.
+assets/audio.pack filter=lfs diff=lfs merge=lfs -text
+
+# Keep line endings sane across Windows and the Pi.
+* text=auto eol=lf
+*.mp3 binary
+*.pack binary

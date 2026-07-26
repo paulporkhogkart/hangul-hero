@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Hangul Hero">
+  <!--
+    ㅎ, drawn rather than typed, so it does not depend on a Korean font being present and
+    so the strokes can be weighted for a 16px tab rather than for reading.
+
+    Three shapes, well separated: a dot, a bar, a ring. That separation is the whole
+    reason for choosing this jamo. A syllable block like 한 collapses into a smudge at
+    favicon size, and a bar or a ring alone reads as somebody else's logo.
+  -->
+  <rect width="64" height="64" fill="#101113"/>
+  <g fill="none" stroke="#d8b44a" stroke-width="6.5" stroke-linecap="round">
+    <path d="M32 12 v5"/>
+    <path d="M17 26 H47"/>
+    <circle cx="32" cy="43" r="11"/>
+  </g>
+</svg>

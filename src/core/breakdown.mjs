@@ -1,0 +1,358 @@
+// Explains how a spelling becomes a romanization, syllable by syllable.
+//
+// Feeds two surfaces from one derivation: the peek panel during a race, and the learn
+// page. They can never disagree because there is only one implementation.
+
+import { decomposeWord, FINAL_PARTS, VOWEL_PARTS } from './hangul.mjs'
+import { INITIAL_RR, VOWEL_RR, FINAL_RR, romanizePronunciation, toWrittenForm } from './rr.mjs'
+
+const NASAL = new Set(['ㄴ', 'ㅁ', 'ㅇ'])
+
+/** Only seven sounds may close a syllable, so most finals collapse before any
+ *  cross-syllable rule gets a look at them. */
+const CLOSES_AS = {
+  'ㄲ': 'ㄱ', 'ㅋ': 'ㄱ', 'ㄳ': 'ㄱ', 'ㄺ': 'ㄱ',
+  'ㅅ': 'ㄷ', 'ㅆ': 'ㄷ', 'ㅈ': 'ㄷ', 'ㅊ': 'ㄷ', 'ㅌ': 'ㄷ', 'ㅎ': 'ㄷ',
+  'ㅍ': 'ㅂ', 'ㅄ': 'ㅂ', 'ㄿ': 'ㅂ',
+  'ㄵ': 'ㄴ', 'ㄶ': 'ㄴ', 'ㄻ': 'ㅁ', 'ㄼ': 'ㄹ', 'ㄽ': 'ㄹ', 'ㄾ': 'ㄹ', 'ㅀ': 'ㄹ',
+}
+const TENSE = { 'ㄲ': 'ㄱ', 'ㄸ': 'ㄷ', 'ㅃ': 'ㅂ', 'ㅆ': 'ㅅ', 'ㅉ': 'ㅈ' }
+const ASPIRATE = { 'ㅋ': 'ㄱ', 'ㅌ': 'ㄷ', 'ㅍ': 'ㅂ', 'ㅊ': 'ㅈ' }
+
+/**
+ * The articulatory reason each rule exists. Korean sound changes are not arbitrary
+ * decrees, they are what your mouth does when asked to make two sounds in a row that
+ * fight each other. Knowing the reason turns six rules into one idea, and one idea
+ * generalises to words nobody has shown you.
+ *
+ * One entry per rule type rather than per combination, which is what makes this
+ * tractable: the mechanism is the same whichever consonants are involved.
+ */
+/**
+ * Where each rule sits in the derivation.
+ *
+ * Sound changes feed each other, so listing them by syllable position puts effects above
+ * their own causes. 독립 is the clearest case: the ㄹ of 립 becomes ㄴ first, giving 독닙,
+ * and only then does the ㄱ nasalise in front of that new ㄴ. Printed in syllable order it
+ * read as "the ㄱ softens before the ㄴ" above the rule that creates the ㄴ.
+ *
+ * These stages are the standard feeding order, not a fix for one word: 꽃잎 (insertion
+ * feeding nasalisation) and 수없이 (liaison feeding tensing) fall out of the same list.
+ * Ties keep syllable order.
+ */
+const STAGE = {
+  neutralisation: 1,   // what a syllable can close with, decided before anything crosses
+  hdrop: 1,
+  liaison: 2,          // resyllabification, which moves sounds into new company
+  insertion: 2,        // and so does adding one
+  palatalisation: 3,
+  aspiration: 3,
+  rtoN: 4,             // ㄹ becomes ㄴ, creating the nasal that the next rule reacts to
+  nasalisation: 5,
+  lateralisation: 6,   // ㄴ becomes ㄹ
+  tensification: 7,    // never written, so it can sit last without misleading anyone
+  vowelheld: 8,
+}
+
+const WHY = {
+  liaison:
+    'A consonant wants a vowel to lean on, and ㅇ at the front of a syllable is an empty seat. Rather than close the first syllable and reopen the second, the tongue simply carries straight on.',
+  nasalisation:
+    'Your soft palate has to drop for the nasal that follows. It drops early, so air is already escaping through the nose while the first consonant is still being held, and a stop made with the nose open is a nasal.',
+  lateralisation:
+    'ㄴ and ㄹ are made in the same spot, just behind the teeth. Holding for the ㄴ and then flicking for the ㄹ means arriving and leaving the same place twice, so the flick wins both times.',
+  rtoN:
+    'ㄹ is a quick flick of the tongue, and a flick needs somewhere to travel from. Straight after a stopped consonant the tongue is already pinned, so the sound comes out held instead, which is a ㄴ.',
+  palatalisation:
+    'ㅣ is made with the tongue high and pushed forward. Starting a ㄷ back on the ridge and then dragging forward for the ㅣ is more work than beginning where you are already heading.',
+  aspiration:
+    'ㅎ is not really a consonant so much as a puff of breath. Made at the same moment as ㄱ, ㄷ, ㅂ or ㅈ it never gets a slot of its own, so it turns into the puff on that consonant instead.',
+  tensification:
+    'The stop before it leaves the vocal folds pressed shut. The next consonant is released while they are still tight, which is what makes it come out hard rather than soft.',
+  insertion:
+    'The join between two words is a real boundary, and a vowel starting with a ㅣ glide right after a closed syllable would blur it. The inserted ㄴ keeps the two halves audible as two halves.',
+  hdrop:
+    'ㅎ is made by letting breath through an open throat. Between two vowels the throat is already open, so there is nothing left for it to do and it simply stops being pronounced.',
+  neutralisation:
+    'Closing a syllable means stopping the air, and stopping it only has so many distinct positions. The fine differences between ㅅ, ㅈ, ㅊ, ㅌ and ㅎ live in how they are released, and a closed syllable never releases them.',
+  vowelheld:
+    'Spelling here follows the word rather than the mouth. Keeping it constant means the same word looks the same everywhere, whoever is saying it and however carefully.',
+}
+
+/**
+ * Work out which sound changes turned `spelling` into `spoken`, one entry per change.
+ * Each carries the syllable index it applies to so the panel can point at it.
+ *
+ * `reflected` says whether the change shows up in the romanization. Tensification does
+ * not, and saying so out loud is the point: a player who hears 학꾜 and types "hakkyo"
+ * needs to be told the sound is real but the spelling rule ignores it.
+ */
+export function describeChanges(spelling, spoken) {
+  const sp = decomposeWord(spelling)
+  const pr = decomposeWord(spoken)
+  const out = []
+  if (sp.length !== pr.length) return out
+
+  /** Name a final honestly: what is written, and what it actually closes as. Most
+   *  cross-syllable rules operate on the closed value, so quoting the written letter
+   *  alone sends people hunting for a rule that does not exist. This is what made
+   *  깨끗해지다 talk about a ㄷ that appears nowhere in the spelling. */
+  const nameFinal = jamo => {
+    const closed = CLOSES_AS[jamo] ?? jamo
+    return closed === jamo ? jamo : `${jamo}, which closes as ${closed},`
+  }
+  const closedOf = jamo => CLOSES_AS[jamo] ?? jamo
+
+  for (let i = 0; i < sp.length; i++) {
+    const s = sp[i], p = pr[i]
+    const prev = sp[i - 1], prevP = pr[i - 1]
+    const next = sp[i + 1], nextP = pr[i + 1]
+    if (!s || !p) continue
+
+    // ── something appears where the spelling has a silent ㅇ ──────────────
+    // Liaison and insertion look identical from this syllable alone. The previous
+    // syllable tells them apart: in liaison it LOSES its final because the consonant
+    // moved; in insertion it KEEPS one, because nothing moved and a new sound arrived.
+    if (s.initial === 'ㅇ' && p.initial !== 'ㅇ' && prev) {
+      const pair = FINAL_PARTS[prev.final]
+      // The whole final moved, as in 한국어 where 국 gives up its ㄱ entirely.
+      const wholeMoved = Boolean(prev.final) && !prevP.final
+      // Or a pair split, as in 수없이 where 없 keeps its ㅂ and lets the ㅅ go. My first
+      // discriminator only asked whether the previous syllable lost its final, so a
+      // syllable keeping HALF of one looked like nothing had moved at all, and the code
+      // invented an inserted ㄴ to explain the arrival.
+      const halfMoved = Boolean(pair) && prevP.final === pair[0]
+
+      if (wholeMoved || halfMoved) {
+        const moved = wholeMoved ? prev.final : pair[1]
+        const tensed = TENSE[p.initial] && TENSE[p.initial] === moved
+        out.push({
+          at: i,
+          type: 'liaison',
+          reflected: true,
+          title: 'Liaison',
+          text: halfMoved
+            ? `${prev.ch} ends in the pair ${pair[0]}+${pair[1]}, and only one consonant can close a syllable. ${s.ch} opens with the silent ㅇ, so the ${pair[0]} stays behind and the ${pair[1]} slides across into it.`
+            : `${prev.ch} ends in ${prev.final} and ${s.ch} opens with the silent ㅇ, so the ${prev.final} slides across and is read as the start of ${p.ch}.`,
+        })
+        if (tensed) {
+          out.push({
+            at: i,
+            type: 'tensification',
+            reflected: false,
+            title: 'Tensing',
+            text: `Landing straight after the ${prevP.final}, that ${moved} comes out tight as ${p.initial}. Revised Romanization does not mark tensing, so it is still written ${INITIAL_RR[moved]}.`,
+          })
+        }
+        continue
+      }
+
+      // 표준발음법 제29항. Fires at a compound boundary before a ㅣ-glide vowel.
+      const GLIDE = { 'ㅣ': '이', 'ㅑ': '야', 'ㅕ': '여', 'ㅛ': '요', 'ㅠ': '유', 'ㅒ': '얘', 'ㅖ': '예' }
+      const became = p.initial
+      out.push({
+        at: i,
+        type: 'insertion',
+        reflected: true,
+        title: became === 'ㄹ' ? 'Inserted ㄴ, then ㄹ' : 'Inserted ㄴ',
+        text: `This is two words joined together and the second one starts with ${GLIDE[s.vowel] ?? s.vowel}, one of the ㅣ glide vowels. A ㄴ appears in front of it, so ${s.ch} is read as ${p.ch}.`
+          + (became === 'ㄹ' ? ` That new ㄴ then lands next to the ㄹ ending ${prev.ch}, and ㄴ beside ㄹ always gives way, so it is read as ㄹ.` : '')
+          + ` The inserted consonant also takes the slot ${prev.final ? `the ${prev.final} of ${prev.ch}` : 'the previous consonant'} would otherwise have slid into.`,
+      })
+      continue
+    }
+
+    // ── ㅎ fusing with a stop, in either direction ────────────────────────
+    if (ASPIRATE[p.initial]) {
+      const plain = ASPIRATE[p.initial]
+      // ㅎ is at the start of this syllable, and the stop is the previous final. The
+      // stop may aspirate as itself (꽂히다, ㅈ + ㅎ) or via its closed value
+      // (깨끗해지다, where ㅅ closes as ㄷ first), so both count.
+      if (s.initial === 'ㅎ' && prev?.final && [prev.final, closedOf(prev.final)].includes(plain)) {
+        const viaClosed = prev.final !== plain
+        out.push({
+          at: i,
+          type: 'aspiration',
+          reflected: true,
+          title: 'Aspiration',
+          text: `${prev.ch} ends in ${viaClosed ? nameFinal(prev.final) : prev.final} and ${s.ch} begins with ㅎ. The two fuse into a single ${p.initial}, so you hear ${prevP.ch}${p.ch} rather than two separate sounds.`,
+        })
+        continue
+      }
+      // ㅎ is the previous syllable's final, and the stop starts this one.
+      if (prev && ['ㅎ', 'ㄶ', 'ㅀ'].includes(prev.final) && s.initial === plain) {
+        out.push({
+          at: i,
+          type: 'aspiration',
+          reflected: true,
+          title: 'Aspiration',
+          text: `${prev.ch} ends in ${prev.final} and ${s.ch} begins with ${s.initial}. The ㅎ has no room of its own, so it fuses into the ${s.initial} and both come out as a single ${p.initial}.`,
+        })
+        continue
+      }
+    }
+
+    // ── ㄷ or ㅌ pulled forward by a following ㅣ ─────────────────────────
+    if ((p.initial === 'ㅈ' || p.initial === 'ㅊ') && s.vowel === 'ㅣ'
+        && prev && ['ㄷ', 'ㅌ'].includes(prev.final)) {
+      out.push({
+        at: i,
+        type: 'palatalisation',
+        reflected: true,
+        title: 'Palatalisation',
+        text: `The ${prev.final} ending ${prev.ch} lands directly in front of ㅣ, which drags it forward in the mouth until it comes out as ${p.initial}.`,
+      })
+      continue
+    }
+
+    // ── ㄴ and ㄹ meeting, in either order ────────────────────────────────
+    if ((s.initial === 'ㄴ' && p.initial === 'ㄹ') || (s.final === 'ㄴ' && p.final === 'ㄹ')) {
+      const side = s.initial === 'ㄴ' ? `The ㄴ starting ${s.ch}` : `The ㄴ ending ${s.ch}`
+      out.push({
+        at: i,
+        type: 'lateralisation',
+        reflected: true,
+        title: 'ㄴ becomes ㄹ',
+        text: `${side} is touching a ㄹ, and the two cannot both be held, so it gives way and both are read as ㄹ.`,
+      })
+      continue
+    }
+
+    // ── a stop losing to a following nasal ────────────────────────────────
+    if (s.final && p.final && s.final !== p.final && NASAL.has(p.final) && !NASAL.has(closedOf(s.final))) {
+      out.push({
+        at: i,
+        type: 'nasalisation',
+        reflected: true,
+        title: 'Nasal assimilation',
+        // Name the sound as it is actually said next door, not as it is written. In 독립
+        // the trigger is the ㄴ of 닙, and 립 has no ㄴ in it anywhere.
+        text: `${s.ch} ends in ${nameFinal(s.final)} which cannot be held in front of the ${nextP?.initial ?? 'following consonant'} of ${nextP?.ch ?? next?.ch ?? 'the next syllable'}, so it softens into ${p.final} and ${s.ch} is read as ${p.ch}.`,
+      })
+      continue
+    }
+
+    // ㄹ turning into ㄴ after a consonant that cannot lead into it. Its own type rather
+    // than a flavour of nasalisation, because it runs BEFORE nasalisation and creates
+    // the ㄴ that nasalisation then reacts to.
+    if (s.initial === 'ㄹ' && p.initial === 'ㄴ') {
+      out.push({
+        at: i,
+        type: 'rtoN',
+        reflected: true,
+        title: 'ㄹ becomes ㄴ',
+        text: `A ㄹ cannot start a syllable straight after ${prev ? `the ${prev.final} ending ${prev.ch}` : 'that consonant'}, so ${s.ch} is read as ${p.ch}.`,
+      })
+      continue
+    }
+
+    // ── tensing, which is real and audible and never written ──────────────
+    if (TENSE[p.initial] && !TENSE[s.initial]) {
+      out.push({
+        at: i,
+        type: 'tensification',
+        reflected: false,
+        title: 'Tensing',
+        text: `You will hear the ${s.initial} of ${s.ch} come out tight, as ${p.initial}. Revised Romanization does not mark tensing at all, so it is still written ${INITIAL_RR[s.initial]}.`,
+      })
+      continue
+    }
+
+    // ── ㅎ giving up between vowels ───────────────────────────────────────
+    if (s.final === 'ㅎ' && !p.final && next?.initial === 'ㅇ' && nextP?.initial === 'ㅇ') {
+      out.push({
+        at: i,
+        type: 'hdrop',
+        reflected: true,
+        title: 'ㅎ drops',
+        text: `${s.ch} ends in ㅎ and ${next.ch} opens with a vowel. A ㅎ caught between two vowels is barely audible, so it disappears and ${s.ch} is read as ${p.ch}.`,
+      })
+      continue
+    }
+
+    // ── the seven closing sounds ──────────────────────────────────────────
+    // Only reported when nothing more interesting happened to this syllable, because a
+    // syllable that also nasalises has already explained itself. Silent until now, which
+    // left 144 words in the list changing sound with no explanation offered at all.
+    if (s.final && p.final && s.final !== p.final && closedOf(s.final) === p.final) {
+      const pair = FINAL_PARTS[s.final]
+      // If the next syllable took the second half, it was not dropped, it moved, and the
+      // liaison entry on that syllable already says so. Reporting both left 수없이
+      // claiming the ㅅ was discarded one line above explaining where it went.
+      const secondMoved = pair && next?.initial === 'ㅇ' && nextP
+        && (nextP.initial === pair[1] || TENSE[nextP.initial] === pair[1])
+      if (secondMoved) continue
+
+      out.push({
+        at: i,
+        type: 'neutralisation',
+        reflected: true,
+        title: pair ? 'Only one can close' : 'Closing sound',
+        // A pair losing its second half and a single consonant changing its value are
+        // different events, and 값 deserves to be told which one happened to it.
+        text: pair
+          ? `${s.ch} ends in the pair ${pair[0]}+${pair[1]}, but only one consonant may close a syllable. Nothing follows for the ${pair[1]} to move into, so it is simply dropped and only the ${p.final} is heard.`
+          : `Only seven sounds may close a Korean syllable, and ${s.final} is not one of them. With nothing following to rescue it, ${s.ch} closes as ${p.final} instead.`,
+      })
+      continue
+    }
+
+    // ── a vowel said one way and written another ──────────────────────────
+    // Without this the panel shows 희 with [히] underneath and offers no reason, which
+    // reads as a mistake rather than as a deliberate rule.
+    if (s.vowel !== p.vowel && (s.vowel === 'ㅢ' || s.vowel === 'ㅖ')) {
+      out.push({
+        at: i,
+        type: 'vowelheld',
+        reflected: false,
+        title: `Said ${p.vowel}, written ${s.vowel}`,
+        text: `After a consonant, ${s.vowel} is commonly said as ${p.vowel}, and ${s.ch} comes out as ${p.ch}. Revised Romanization spells ${s.vowel} the same way however it is said, so it is still written ${VOWEL_RR[s.vowel]}.`,
+      })
+    }
+  }
+
+  return out
+    .map((c, i) => ({ ...c, i }))
+    .sort((a, b) => (STAGE[a.type] ?? 99) - (STAGE[b.type] ?? 99) || a.at - b.at || a.i - b.i)
+    .map(({ i, ...c }) => ({ ...c, why: WHY[c.type] ?? null }))
+}
+
+/** A single jamo with everything the panel needs to render and explain it. */
+const describeJamo = (jamo, slot, rr) => ({
+  jamo,
+  slot,
+  rr,
+  parts: slot === 'final' ? FINAL_PARTS[jamo] ?? null : slot === 'vowel' ? VOWEL_PARTS[jamo] ?? null : null,
+})
+
+/**
+ * The whole derivation for one word.
+ *   spelling -> spoken -> written -> romanization
+ * `spoken` is what you hear (tensification and all). `written` is the form RR is
+ * actually derived from. Showing both is what stops the tensification rule feeling
+ * arbitrary.
+ */
+export function breakdown(word, publishedPron) {
+  const written = toWrittenForm(word, publishedPron)
+  const { rr, syllables: romanized } = romanizePronunciation(written)
+  const spelled = decomposeWord(word)
+  const spoken = String(publishedPron).split('/')[0].replace(/[ːˈˌ]/g, '').trim()
+
+  const syllables = spelled.map((s, i) => {
+    const r = romanized[i]
+    if (!s) return { char: word[i], literal: true }
+    return {
+      char: s.ch,
+      spoken: [...spoken][i] ?? null,
+      rr: r?.rr ?? '',
+      changed: (r?.ch ?? s.ch) !== s.ch,
+      jamo: [
+        describeJamo(s.initial, 'initial', INITIAL_RR[s.initial]),
+        describeJamo(s.vowel, 'vowel', VOWEL_RR[s.vowel]),
+        ...(s.final ? [describeJamo(s.final, 'final', FINAL_RR[s.final])] : []),
+      ],
+    }
+  })
+
+  return { word, spoken, written, rr, syllables, changes: describeChanges(word, spoken) }
+}

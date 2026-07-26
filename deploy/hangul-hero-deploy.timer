@@ -1,0 +1,10 @@
+[Unit]
+Description=Check GitHub for a new Hangul Hero commit
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+Unit=hangul-hero-deploy.service
+
+[Install]
+WantedBy=timers.target

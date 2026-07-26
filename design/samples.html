@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hangul Hero · voice samples</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Noto+Sans+KR:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root { --bg:#101113; --ink:#f2efe9; --dim:#6b6a65; --dimmer:#45443f; --line:#26272b; --accent:#d8b44a; }
+*,*::before,*::after { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:#d6d3cd; font:400 14px/1.6 "JetBrains Mono",ui-monospace,monospace; -webkit-font-smoothing:antialiased; }
+.bar { position:sticky; top:0; z-index:20; display:flex; flex-wrap:wrap; align-items:center; gap:22px; padding:13px 30px; background:var(--bg); border-bottom:1px solid var(--line); }
+.bar h1 { margin:0; font-size:12px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:var(--ink); }
+.lbl { font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--dim); }
+.grp { display:flex; align-items:center; gap:9px; }
+.seg { display:flex; border:1px solid #32343a; }
+.seg button { appearance:none; border:0; background:transparent; color:#9b9892; font:inherit; font-size:12px; padding:5px 13px; cursor:pointer; }
+.seg button + button { border-left:1px solid #32343a; }
+.seg button[aria-pressed="true"] { background:var(--accent); color:#14150f; font-weight:700; }
+.push { margin-left:auto; }
+.btn { appearance:none; border:1px solid #3a3d44; background:#1a1c20; color:#d3d0ca; font:inherit; font-size:12px; padding:6px 14px; cursor:pointer; text-decoration:none; }
+.btn:hover { border-color:#5a5d64; }
+.btn.link { border-color:transparent; color:var(--accent); }
+
+.intro { max-width:76ch; padding:34px 30px 4px; color:#8a8781; }
+.intro p { margin:0 0 12px; }
+.intro b { color:var(--ink); font-weight:400; }
+.intro kbd { border:1px solid #3a3d44; padding:1px 6px; color:var(--ink); font:inherit; font-size:12px; }
+
+table { width:100%; max-width:1100px; border-collapse:collapse; margin:18px 30px 110px; }
+th { text-align:left; font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--dimmer); font-weight:400; padding:0 14px 9px 0; border-bottom:1px solid var(--line); }
+td { padding:13px 14px 13px 0; border-bottom:1px solid #1c1d21; vertical-align:middle; }
+tr:hover td { background:#141518; }
+tr.playing td { background:#191a15; }
+.n { width:34px; color:var(--dimmer); font-size:12px; }
+.han { font-family:"Noto Sans KR",sans-serif; font-size:27px; color:var(--ink); white-space:nowrap; }
+.rr { color:var(--accent); font-size:15px; white-space:nowrap; }
+.note { color:#7c7a74; font-size:12.5px; }
+.play { appearance:none; width:38px; height:38px; border:1px solid #3a3d44; background:#1a1c20; color:var(--ink); cursor:pointer; font-size:12px; line-height:1; }
+.play:hover { border-color:var(--accent); color:var(--accent); }
+tr.playing .play { background:var(--accent); border-color:var(--accent); color:#14150f; }
+.err { margin:18px 30px; padding:14px 18px; border:1px solid #6e2b26; background:#1a1214; color:#e8b4ac; max-width:76ch; }
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <h1>Hangul Hero · voice samples</h1>
+  <div class="grp"><span class="lbl">Voice</span><div class="seg" id="voices"></div></div>
+  <div class="push"></div>
+  <a class="btn link" href="/">directions</a>
+  <a class="btn link" href="/glyphs.html">glyphs</a>
+</div>
+
+<div class="intro">
+  <p>These eight are not a random sample. Seven of them carry a sound change, so this page is doing two jobs
+  at once: judging whether the voice is pleasant enough to hear a few hundred times, and <b>independently
+  checking that the pronunciation matches the romanization we intend to mark as correct</b>. If Azure says
+  <span class="han" style="font-size:16px">독립</span> and it does not sound like <b>dongnip</b>, that is a
+  signal worth chasing down before we build anything on top of it.</p>
+  <p>Press <kbd>space</kbd> to play the next one, or <kbd>1</kbd> to <kbd>8</kbd> to jump straight to a row.</p>
+</div>
+
+<div id="err"></div>
+<table id="tbl"><thead><tr>
+  <th class="n"></th><th></th><th>Word</th><th>Should sound like</th><th>Listen for</th>
+</tr></thead><tbody></tbody></table>
+
+<script type="module">
+const tbody = document.querySelector('#tbl tbody')
+const seg = document.getElementById('voices')
+let data, voice, rows = [], cur = -1
+const audio = new Audio()
+
+try {
+  data = await (await fetch('/samples/index.json')).json()
+} catch {
+  document.getElementById('err').innerHTML =
+    '<div class="err">No samples found. Run <b>npm run tts:sample</b> first.</div>'
+  throw new Error('no samples')
+}
+
+voice = data.voices[0]
+for (const v of data.voices) {
+  const b = document.createElement('button')
+  b.textContent = v
+  b.setAttribute('aria-pressed', String(v === voice))
+  b.addEventListener('click', () => {
+    voice = v
+    seg.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b)))
+  })
+  seg.appendChild(b)
+}
+
+data.words.forEach((w, i) => {
+  const tr = document.createElement('tr')
+  tr.innerHTML = `
+    <td class="n">${i + 1}</td>
+    <td><button class="play" aria-label="play ${w.han}">&#9654;</button></td>
+    <td class="han">${w.han}</td>
+    <td class="rr">${w.rr}</td>
+    <td class="note">${w.note}</td>`
+  tr.querySelector('.play').addEventListener('click', () => play(i))
+  tbody.appendChild(tr)
+  rows.push({ tr, w })
+})
+
+function play(i) {
+  rows.forEach(r => r.tr.classList.remove('playing'))
+  const r = rows[i]
+  if (!r) return
+  cur = i
+  r.tr.classList.add('playing')
+  audio.src = `/samples/${voice}/${encodeURIComponent(r.w.han)}.mp3`
+  audio.play().catch(() => {})
+}
+
+audio.addEventListener('ended', () => rows[cur]?.tr.classList.remove('playing'))
+
+document.addEventListener('keydown', e => {
+  if (e.key === ' ') { e.preventDefault(); play((cur + 1) % rows.length) }
+  else if (/^[1-9]$/.test(e.key)) play(Number(e.key) - 1)
+})
+</script>
+</body>
+</html>

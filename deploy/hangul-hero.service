@@ -1,0 +1,19 @@
+[Unit]
+Description=Hangul Hero (read Korean, type the romanization, race the clock)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/hangul-hero
+EnvironmentFile=/home/pi/hangul-hero/.env
+ExecStart=/usr/bin/node server/index.mjs
+Restart=always
+RestartSec=5
+# The process closes the database on SIGTERM so SQLite can checkpoint cleanly. Give it
+# room to finish rather than killing it mid-write on every deploy.
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

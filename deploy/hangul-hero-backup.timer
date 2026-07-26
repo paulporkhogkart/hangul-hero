@@ -1,0 +1,11 @@
+[Unit]
+Description=Nightly Hangul Hero database backup
+
+[Timer]
+OnCalendar=*-*-* 04:20:00
+# The Pi is not always awake at 4am. Catch up on the next boot rather than skipping a day.
+Persistent=true
+Unit=hangul-hero-backup.service
+
+[Install]
+WantedBy=timers.target

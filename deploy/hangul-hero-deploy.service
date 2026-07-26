@@ -1,0 +1,10 @@
+[Unit]
+Description=Hangul Hero auto-deploy (pull from GitHub, build, restart)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=pi
+WorkingDirectory=/home/pi/hangul-hero
+ExecStart=/bin/bash /home/pi/hangul-hero/deploy/deploy.sh

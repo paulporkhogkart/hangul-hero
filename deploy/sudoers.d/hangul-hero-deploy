@@ -1,0 +1,2 @@
+# Let the deploy script restart its own service, and nothing else, without a password.
+pi ALL=(root) NOPASSWD: /usr/bin/systemctl restart hangul-hero

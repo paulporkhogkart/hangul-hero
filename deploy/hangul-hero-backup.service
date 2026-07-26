@@ -1,0 +1,9 @@
+[Unit]
+Description=Hangul Hero database backup
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=pi
+WorkingDirectory=/home/pi/hangul-hero
+ExecStart=/usr/bin/node tools/backup-db.mjs
