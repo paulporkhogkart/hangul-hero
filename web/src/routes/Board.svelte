@@ -14,7 +14,9 @@
   // with a stale URL.
   const q = route.query
   let kind = $state(q.get('kind') === 'daily' ? 'daily' : 'free')
-  let mode = $state(MODES.includes(Number(q.get('mode'))) ? Number(q.get('mode')) : 25)
+  // 10 words is the shortest race and the one most people have actually run, so it is
+  // the board most likely to have something on it when the page opens.
+  let mode = $state(MODES.includes(Number(q.get('mode'))) ? Number(q.get('mode')) : 10)
   let view = $state(['all', 'best', 'mine'].includes(q.get('view')) ? q.get('view') : 'all')
   let rows = $state([])
   let loading = $state(true)
