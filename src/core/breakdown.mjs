@@ -45,13 +45,14 @@ const STAGE = {
   hdrop: 1,
   liaison: 2,          // resyllabification, which moves sounds into new company
   insertion: 2,        // and so does adding one
-  palatalisation: 3,
   aspiration: 3,
-  rtoN: 4,             // ㄹ becomes ㄴ, creating the nasal that the next rule reacts to
-  nasalisation: 5,
-  lateralisation: 6,   // ㄴ becomes ㄹ
-  tensification: 7,    // never written, so it can sit last without misleading anyone
-  vowelheld: 8,
+  palatalisation: 4,   // after aspiration, which can be what puts a ㅌ in front of the ㅣ
+  rtoN: 5,             // ㄹ becomes ㄴ, creating the nasal that the next rule reacts to
+  nasalisation: 6,
+  lateralisation: 7,   // ㄴ becomes ㄹ
+  tensification: 8,    // never written, so it can sit last without misleading anyone
+  glideeaten: 8,
+  vowelheld: 9,
 }
 
 const WHY = {
@@ -243,12 +244,28 @@ export function describeChanges(spelling, spoken) {
     // ── ㄷ or ㅌ pulled forward by a following ㅣ ─────────────────────────
     if ((p.initial === 'ㅈ' || p.initial === 'ㅊ') && s.vowel === 'ㅣ'
         && prev && ['ㄷ', 'ㅌ'].includes(prev.final)) {
+      // 닫히다 is two rules, not one. The ㄷ never meets the ㅣ: it fuses with the ㅎ of
+      // 히 into ㅌ, and it is that ㅌ which then comes forward. Saying only the second
+      // half left a sentence claiming the ㄷ "lands directly in front of ㅣ" with a whole
+      // consonant standing between them.
+      const viaH = s.initial === 'ㅎ'
+      if (viaH) {
+        out.push({
+          at: i,
+          type: 'aspiration',
+          reflected: true,
+          title: 'Aspiration',
+          text: `${prev.ch} ends in ${prev.final} and ${s.ch} begins with ㅎ. The two fuse into a single ㅌ.`,
+        })
+      }
       out.push({
         at: i,
         type: 'palatalisation',
         reflected: true,
         title: 'Palatalisation',
-        text: `The ${prev.final} ending ${prev.ch} lands directly in front of ㅣ, which drags it forward in the mouth until it comes out as ${p.initial}.`,
+        text: viaH
+          ? `That ㅌ is now sitting directly in front of ㅣ, which drags it forward in the mouth until it comes out as ${p.initial}, so ${prev.ch}${s.ch} is read as ${prevP.ch}${p.ch}.`
+          : `The ${prev.final} ending ${prev.ch} lands directly in front of ㅣ, which drags it forward in the mouth until it comes out as ${p.initial}.`,
       })
       continue
     }

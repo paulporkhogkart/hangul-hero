@@ -25,6 +25,20 @@ describe('a rule that creates a sound comes before the rule it feeds', () => {
   test('수없이: the consonant moves before it tenses in its new home', () => {
     assert.deepEqual(titles('수없이', '수업씨'), ['Liaison', 'Tensing'])
   })
+
+  test('닫히다: the ㄷ fuses with the ㅎ before the result meets the ㅣ', () => {
+    // Two rules, not one. The ㄷ never touches the ㅣ, and saying it "lands directly in
+    // front of" it put a whole consonant out of existence.
+    assert.deepEqual(titles('닫히다', '다치다'), ['Aspiration', 'Palatalisation'])
+  })
+
+  test('붙이다 needs no aspiration, so it reports palatalisation alone', () => {
+    assert.deepEqual(titles('붙이다', '부치다'), ['Palatalisation'])
+  })
+
+  test('맞히다 is aspiration alone, because ㅈ plus ㅎ is already ㅊ', () => {
+    assert.deepEqual(titles('맞히다', '마치다'), ['Aspiration'])
+  })
 })
 
 describe('the trigger is named as it is said, not as it is written', () => {
