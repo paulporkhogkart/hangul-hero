@@ -4,7 +4,7 @@
 // page. They can never disagree because there is only one implementation.
 
 import { decomposeWord, FINAL_PARTS, VOWEL_PARTS } from './hangul.mjs'
-import { INITIAL_RR, VOWEL_RR, FINAL_RR, romanizePronunciation, toWrittenForm } from './rr.mjs'
+import { INITIAL_RR, VOWEL_RR, FINAL_RR, romanizePronunciation, toWrittenForm, chooseVariant } from './rr.mjs'
 
 const NASAL = new Set(['ㄴ', 'ㅁ', 'ㅇ'])
 
@@ -207,14 +207,23 @@ export function describeChanges(spelling, spoken) {
       // ㅎ is at the start of this syllable, and the stop is the previous final. The
       // stop may aspirate as itself (꽂히다, ㅈ + ㅎ) or via its closed value
       // (깨끗해지다, where ㅅ closes as ㄷ first), so both count.
-      if (s.initial === 'ㅎ' && prev?.final && [prev.final, closedOf(prev.final)].includes(plain)) {
-        const viaClosed = prev.final !== plain
+      // The stop may be the final itself (축하, ㄱ+ㅎ), its closed value (깨끗해지다,
+      // where ㅅ closes as ㄷ first), or one half of a pair (넓히다, where the ㅂ of ㄼ
+      // does the fusing and the ㄹ stays put).
+      const prevPair = FINAL_PARTS[prev?.final] ?? []
+      const sources = prev?.final ? [prev.final, closedOf(prev.final), ...prevPair] : []
+      if (s.initial === 'ㅎ' && sources.includes(plain)) {
+        const fromPair = prevPair.includes(plain)
+        const viaClosed = !fromPair && prev.final !== plain
+        const describe = fromPair
+          ? `the pair ${prevPair[0]}+${prevPair[1]}, whose ${plain}`
+          : viaClosed ? nameFinal(prev.final) : prev.final
         out.push({
           at: i,
           type: 'aspiration',
           reflected: true,
           title: 'Aspiration',
-          text: `${prev.ch} ends in ${viaClosed ? nameFinal(prev.final) : prev.final} and ${s.ch} begins with ㅎ. The two fuse into a single ${p.initial}, so you hear ${prevP.ch}${p.ch} rather than two separate sounds.`,
+          text: `${prev.ch} ends in ${describe} ${fromPair ? 'meets' : 'and'} ${fromPair ? `the ㅎ of ${s.ch}` : `${s.ch} begins with ㅎ`}. The two fuse into a single ${p.initial}, so you hear ${prevP.ch}${p.ch} rather than two separate sounds.`,
         })
         continue
       }
@@ -313,8 +322,15 @@ export function describeChanges(spelling, spoken) {
     // Only reported when nothing more interesting happened to this syllable, because a
     // syllable that also nasalises has already explained itself. Silent until now, which
     // left 144 words in the list changing sound with no explanation offered at all.
-    if (s.final && p.final && s.final !== p.final && closedOf(s.final) === p.final) {
-      const pair = FINAL_PARTS[s.final]
+    // Which half of a pair survives is not always the predictable one: 넓다 is 널따 but
+    // 밟다 is 밥따, an exception the standard names explicitly. Hardcoding the usual
+    // winner meant the exception matched nothing and 밟 changed shape in silence.
+    const closingPair = FINAL_PARTS[s.final]
+    const survived = s.final && p.final && s.final !== p.final
+      && (closedOf(s.final) === p.final || (closingPair && closingPair.includes(p.final)))
+
+    if (survived) {
+      const pair = closingPair
       // If the next syllable took the second half, it was not dropped, it moved, and the
       // liaison entry on that syllable already says so. Reporting both left 수없이
       // claiming the ㅅ was discarded one line above explaining where it went.
@@ -330,7 +346,10 @@ export function describeChanges(spelling, spoken) {
         // A pair losing its second half and a single consonant changing its value are
         // different events, and 값 deserves to be told which one happened to it.
         text: pair
-          ? `${s.ch} ends in the pair ${pair[0]}+${pair[1]}, but only one consonant may close a syllable. Nothing follows for the ${pair[1]} to move into, so it is simply dropped and only the ${p.final} is heard.`
+          ? `${s.ch} ends in the pair ${pair[0]}+${pair[1]}, but only one consonant may close a syllable. Nothing follows for the other to move into, so the ${pair.find(x => x !== p.final)} is dropped and only the ${p.final} is heard.`
+            + (closedOf(s.final) !== p.final
+              ? ` Which half survives is usually the ${closedOf(s.final)}, as in 넓다, so this word is worth remembering separately.`
+              : '')
           : `Only seven sounds may close a Korean syllable, and ${s.final} is not one of them. With nothing following to rescue it, ${s.ch} closes as ${p.final} instead.`,
       })
       continue
@@ -354,13 +373,15 @@ export function describeChanges(spelling, spoken) {
     // ── a vowel said one way and written another ──────────────────────────
     // Without this the panel shows 희 with [히] underneath and offers no reason, which
     // reads as a mistake rather than as a deliberate rule.
-    if (s.vowel !== p.vowel && (s.vowel === 'ㅢ' || s.vowel === 'ㅖ')) {
+    // ㅚ belongs here too: it is very commonly said ㅞ, and RR writes oe regardless.
+    // Leaving it out meant 외갓집 showed 외 -> [웨] with no reason given.
+    if (s.vowel !== p.vowel && ['ㅢ', 'ㅖ', 'ㅚ'].includes(s.vowel)) {
       out.push({
         at: i,
         type: 'vowelheld',
         reflected: false,
         title: `Said ${p.vowel}, written ${s.vowel}`,
-        text: `After a consonant, ${s.vowel} is commonly said as ${p.vowel}, and ${s.ch} comes out as ${p.ch}. Revised Romanization spells ${s.vowel} the same way however it is said, so it is still written ${VOWEL_RR[s.vowel]}.`,
+        text: `${s.vowel} is very commonly said as ${p.vowel}, and ${s.ch} comes out as ${p.ch}. Revised Romanization spells ${s.vowel} the same way however it is said, so it is still written ${VOWEL_RR[s.vowel]}.`,
       })
     }
   }
@@ -390,7 +411,10 @@ export function breakdown(word, publishedPron) {
   const written = toWrittenForm(word, publishedPron)
   const { rr, syllables: romanized } = romanizePronunciation(written)
   const spelled = decomposeWord(word)
-  const spoken = String(publishedPron).split('/')[0].replace(/[ːˈˌ]/g, '').trim()
+  // The SAME variant the romanization was derived from. Taking the first one blindly put
+  // 햇 -> [해] on screen beside an answer of haetsal, so the panel contradicted the thing
+  // it was there to explain.
+  const spoken = chooseVariant(word, publishedPron)
 
   const syllables = spelled.map((s, i) => {
     const r = romanized[i]
