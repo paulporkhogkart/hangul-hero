@@ -130,7 +130,6 @@
   li.me .who { color: var(--ink); }
   .detail { display: flex; gap: 12px; font-size: 11px; color: var(--dimmer); }
   .detail .miss { color: #8d5f57; }
-  .detail .lv { color: var(--dim); }
   .date { font-size: 11px; color: var(--dimmer); }
   .t { text-align: right; color: var(--accent); padding-left: 6px; }
 
