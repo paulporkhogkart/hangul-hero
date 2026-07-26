@@ -59,6 +59,30 @@ describe('ㅖ said as ㅔ is optional, so the spelling wins', () => {
   })
 })
 
+describe('a tense consonant that liaises across keeps its tension', () => {
+  // Tensification is not written, but these were never tensification: the ㄲ is the
+  // previous syllable's own 받침 arriving in a new syllable. De-tensing it deleted a
+  // consonant that the spelling really has.
+  for (const [spelling, published, expected] of [
+    ['섞이다', '서끼다', 'seokkida'],
+    ['볶음밥', '보끔밥', 'bokkeumbap'],
+    ['뜻밖에', '뜯빠께', 'tteutbakke'],
+    ['깎이다', '까끼다', 'kkakkida'],
+  ]) {
+    test(`${spelling} [${published}] -> ${expected}`, () => {
+      assert.equal(normalize(romanize(spelling, published).rr), normalize(expected))
+    })
+  }
+
+  test('real tensification is still dropped', () => {
+    // 밖 contributes its ㄲ, but 빠 is 밖's plain ㅂ hardened after a stop, so that one
+    // does go back to b. Both behaviours in a single word.
+    assert.equal(normalize(romanize('뜻밖에', '뜯빠께').rr), 'tteutbakke')
+    assert.equal(normalize(romanize('학교', '학꾜').rr), 'hakgyo')
+    assert.equal(normalize(romanize('압구정', '압꾸정').rr), 'apgujeong')
+  })
+})
+
 describe('length marks are not part of the word', () => {
   for (const [spelling, published, expected] of [
     ['닿다', '다ː타', 'data'],

@@ -173,7 +173,19 @@ export function toWrittenForm(spelling, pronunciation, opts = {}) {
       const s = sp[i]
       if (!p || !s) return p?.ch ?? pron[i]
       let { initial, vowel, final } = p
-      if (DETENSE[initial] && !DETENSE[s.initial]) initial = DETENSE[initial]
+
+      /*
+       * De-tensing asks whether an initial is tense in the pronunciation but plain in the
+       * spelling. At a liaison the spelling has a silent ㅇ there, so a genuinely tense
+       * consonant that MOVED across looked like tensification and was being erased:
+       * 섞이다 is 서끼다, and that ㄲ is 섞's own 받침, not a hardened ㄱ. It shipped as
+       * seogida when it should be seokkida.
+       *
+       * A consonant that crossed the boundary keeps whatever it already was.
+       */
+      const prev = sp[i - 1], prevP = pr[i - 1]
+      const liaised = prev && prevP && !prevP.final && prev.final === p.initial
+      if (DETENSE[initial] && !DETENSE[s.initial] && !liaised) initial = DETENSE[initial]
       if (s.vowel === 'ㅚ' || s.vowel === 'ㅢ') vowel = s.vowel
       if (restoreInitial.has(i)) initial = restoreInitial.get(i)
       if (restoreFinal.has(i)) final = restoreFinal.get(i)
