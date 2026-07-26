@@ -112,6 +112,15 @@ export function describeChanges(spelling, spoken) {
     const next = sp[i + 1], nextP = pr[i + 1]
     if (!s || !p) continue
 
+    /*
+     * Each slot is judged on its own.
+     *
+     * A syllable can change in more than one way at once. In 끝없다 the 없 both receives
+     * the ㄷ that left 끝 AND reduces its own ㅄ to ㅂ. These used to be one chain ending
+     * in `continue`, so whichever matched first won and every other change to that
+     * syllable went unmentioned, which is how a 받침 vanished in silence.
+     */
+    initialSlot: if (s.initial !== p.initial) {
     // ── something appears where the spelling has a silent ㅇ ──────────────
     // Liaison and insertion look identical from this syllable alone. The previous
     // syllable tells them apart: in liaison it LOSES its final because the consonant
@@ -144,7 +153,7 @@ export function describeChanges(spelling, spoken) {
             title: 'Palatalisation',
             text: `${prev.ch} ends in ${moved} and ${s.ch} opens with the silent ㅇ, so the ${moved} slides across. It lands directly in front of ㅣ, which drags it forward in the mouth until it comes out as ${p.initial}, so ${prev.ch}${s.ch} is read as ${prevP.ch}${p.ch}.`,
           })
-          continue
+          break initialSlot
         }
 
         /*
@@ -184,7 +193,7 @@ export function describeChanges(spelling, spoken) {
             text: `Landing straight after the ${prevP.final}, that ${moved} comes out tight as ${p.initial}. Revised Romanization does not mark tensing, so it is still written ${INITIAL_RR[moved]}.`,
           })
         }
-        continue
+        break initialSlot
       }
 
       // 표준발음법 제29항. Fires at a compound boundary before a ㅣ-glide vowel.
@@ -199,7 +208,7 @@ export function describeChanges(spelling, spoken) {
           + (became === 'ㄹ' ? ` That new ㄴ then lands next to the ㄹ ending ${prev.ch}, and ㄴ beside ㄹ always gives way, so it is read as ㄹ.` : '')
           + ` The inserted consonant also takes the slot ${prev.final ? `the ${prev.final} of ${prev.ch}` : 'the previous consonant'} would otherwise have slid into.`,
       })
-      continue
+      break initialSlot
     }
 
     // ── ㅎ fusing with a stop, in either direction ────────────────────────
@@ -226,7 +235,7 @@ export function describeChanges(spelling, spoken) {
           title: 'Aspiration',
           text: `${prev.ch} ends in ${describe} ${fromPair ? 'meets' : 'and'} ${fromPair ? `the ㅎ of ${s.ch}` : `${s.ch} begins with ㅎ`}. The two fuse into a single ${p.initial}, so you hear ${prevP.ch}${p.ch} rather than two separate sounds.`,
         })
-        continue
+        break initialSlot
       }
       // ㅎ is the previous syllable's final, and the stop starts this one.
       if (prev && ['ㅎ', 'ㄶ', 'ㅀ'].includes(prev.final) && s.initial === plain) {
@@ -237,7 +246,7 @@ export function describeChanges(spelling, spoken) {
           title: 'Aspiration',
           text: `${prev.ch} ends in ${prev.final} and ${s.ch} begins with ${s.initial}. The ㅎ has no room of its own, so it fuses into the ${s.initial} and both come out as a single ${p.initial}.`,
         })
-        continue
+        break initialSlot
       }
     }
 
@@ -267,34 +276,19 @@ export function describeChanges(spelling, spoken) {
           ? `That ㅌ is now sitting directly in front of ㅣ, which drags it forward in the mouth until it comes out as ${p.initial}, so ${prev.ch}${s.ch} is read as ${prevP.ch}${p.ch}.`
           : `The ${prev.final} ending ${prev.ch} lands directly in front of ㅣ, which drags it forward in the mouth until it comes out as ${p.initial}.`,
       })
-      continue
+      break initialSlot
     }
 
-    // ── ㄴ and ㄹ meeting, in either order ────────────────────────────────
-    if ((s.initial === 'ㄴ' && p.initial === 'ㄹ') || (s.final === 'ㄴ' && p.final === 'ㄹ')) {
-      const side = s.initial === 'ㄴ' ? `The ㄴ starting ${s.ch}` : `The ㄴ ending ${s.ch}`
+    // ── a ㄴ starting this syllable, giving way to a neighbouring ㄹ ──────
+    if (s.initial === 'ㄴ' && p.initial === 'ㄹ') {
       out.push({
         at: i,
         type: 'lateralisation',
         reflected: true,
         title: 'ㄴ becomes ㄹ',
-        text: `${side} is touching a ㄹ, and the two cannot both be held, so it gives way and both are read as ㄹ.`,
+        text: `The ㄴ starting ${s.ch} is touching a ㄹ, and the two cannot both be held, so it gives way and both are read as ㄹ.`,
       })
-      continue
-    }
-
-    // ── a stop losing to a following nasal ────────────────────────────────
-    if (s.final && p.final && s.final !== p.final && NASAL.has(p.final) && !NASAL.has(closedOf(s.final))) {
-      out.push({
-        at: i,
-        type: 'nasalisation',
-        reflected: true,
-        title: 'Nasal assimilation',
-        // Name the sound as it is actually said next door, not as it is written. In 독립
-        // the trigger is the ㄴ of 닙, and 립 has no ㄴ in it anywhere.
-        text: `${s.ch} ends in ${nameFinal(s.final)} which cannot be held in front of the ${nextP?.initial ?? 'following consonant'} of ${nextP?.ch ?? next?.ch ?? 'the next syllable'}, so it softens into ${p.final} and ${s.ch} is read as ${p.ch}.`,
-      })
-      continue
+      break initialSlot
     }
 
     // ㄹ turning into ㄴ after a consonant that cannot lead into it. Its own type rather
@@ -308,7 +302,7 @@ export function describeChanges(spelling, spoken) {
         title: 'ㄹ becomes ㄴ',
         text: `A ㄹ cannot start a syllable straight after ${prev ? `the ${prev.final} ending ${prev.ch}` : 'that consonant'}, so ${s.ch} is read as ${p.ch}.`,
       })
-      continue
+      break initialSlot
     }
 
     // ── tensing, which is real and audible and never written ──────────────
@@ -320,7 +314,35 @@ export function describeChanges(spelling, spoken) {
         title: 'Tensing',
         text: `You will hear the ${s.initial} of ${s.ch} come out tight, as ${p.initial}. Revised Romanization does not mark tensing at all, so it is still written ${INITIAL_RR[s.initial]}.`,
       })
-      continue
+      break initialSlot
+    }
+    } // end initialSlot
+
+    finalSlot: if (s.final !== p.final) {
+    // ── a ㄴ ending this syllable, giving way to a neighbouring ㄹ ────────
+    if (s.final === 'ㄴ' && p.final === 'ㄹ') {
+      out.push({
+        at: i,
+        type: 'lateralisation',
+        reflected: true,
+        title: 'ㄴ becomes ㄹ',
+        text: `The ㄴ ending ${s.ch} is touching a ㄹ, and the two cannot both be held, so it gives way and both are read as ㄹ.`,
+      })
+      break finalSlot
+    }
+
+    // ── a stop losing to a following nasal ────────────────────────────────
+    if (s.final && p.final && s.final !== p.final && NASAL.has(p.final) && !NASAL.has(closedOf(s.final))) {
+      out.push({
+        at: i,
+        type: 'nasalisation',
+        reflected: true,
+        title: 'Nasal assimilation',
+        // Name the sound as it is actually said next door, not as it is written. In 독립
+        // the trigger is the ㄴ of 닙, and 립 has no ㄴ in it anywhere.
+        text: `${s.ch} ends in ${nameFinal(s.final)} which cannot be held in front of the ${nextP?.initial ?? 'following consonant'} of ${nextP?.ch ?? next?.ch ?? 'the next syllable'}, so it softens into ${p.final} and ${s.ch} is read as ${p.ch}.`,
+      })
+      break finalSlot
     }
 
     // ── ㅎ giving up between vowels ───────────────────────────────────────
@@ -332,7 +354,7 @@ export function describeChanges(spelling, spoken) {
         title: 'ㅎ drops',
         text: `${s.ch} ends in ㅎ and ${next.ch} opens with a vowel. A ㅎ caught between two vowels is barely audible, so it disappears and ${s.ch} is read as ${p.ch}.`,
       })
-      continue
+      break finalSlot
     }
 
     // ── the seven closing sounds ──────────────────────────────────────────
@@ -353,7 +375,7 @@ export function describeChanges(spelling, spoken) {
       // claiming the ㅅ was discarded one line above explaining where it went.
       const secondMoved = pair && next?.initial === 'ㅇ' && nextP
         && (nextP.initial === pair[1] || TENSE[nextP.initial] === pair[1])
-      if (secondMoved) continue
+      if (secondMoved) break finalSlot
 
       out.push({
         at: i,
@@ -369,9 +391,11 @@ export function describeChanges(spelling, spoken) {
               : '')
           : `Only seven sounds may close a Korean syllable, and ${s.final} is not one of them. With nothing following to rescue it, ${s.ch} closes as ${p.final} instead.`,
       })
-      continue
+      break finalSlot
     }
+    } // end finalSlot
 
+    vowelSlot: if (s.vowel !== p.vowel) {
     // ── 져 said as 저 ─────────────────────────────────────────────────────
     // 표준발음법 제5항 다만 1. In a conjugated verb, 져/쪄/쳐 are said 저/쩌/처.
     // These seven words changed sound with nothing said about it, which reads as a bug
@@ -384,7 +408,7 @@ export function describeChanges(spelling, spoken) {
         title: 'The y is swallowed',
         text: `${s.initial} is already made with the tongue flat against the roof of the mouth, which is exactly where the y of ㅕ would go. There is nothing left for it to do, so ${s.ch} is simply read as ${p.ch}.`,
       })
-      continue
+      break vowelSlot
     }
 
     // ── a vowel said one way and written another ──────────────────────────
@@ -401,6 +425,7 @@ export function describeChanges(spelling, spoken) {
         text: `${s.vowel} is very commonly said as ${p.vowel}, and ${s.ch} comes out as ${p.ch}. Revised Romanization spells ${s.vowel} the same way however it is said, so it is still written ${VOWEL_RR[s.vowel]}.`,
       })
     }
+    } // end vowelSlot
   }
 
   return out

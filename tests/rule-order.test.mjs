@@ -15,7 +15,11 @@ describe('a rule that creates a sound comes before the rule it feeds', () => {
   })
 
   test('꽃잎: the ㄴ is inserted before the ㅊ reacts to it', () => {
-    assert.deepEqual(titles('꽃잎', '꼰닙'), ['Inserted ㄴ', 'Nasal assimilation'])
+    // 잎 also closes its own ㅍ as ㅂ, which went unreported while one rule per syllable
+    // was the limit. What matters here is the ORDER of the two that form the chain.
+    const t = titles('꽃잎', '꼰닙')
+    assert.ok(t.indexOf('Inserted ㄴ') < t.indexOf('Nasal assimilation'), t.join(' | '))
+    assert.ok(t.includes('Closing sound'), `expected 잎 to explain its ㅍ, got ${t.join(' | ')}`)
   })
 
   test('색연필: same chain, different consonants', () => {
@@ -49,7 +53,9 @@ describe('the trigger is named as it is said, not as it is written', () => {
   })
 
   test('꽃잎 likewise blames the ㄴ of 닙', () => {
-    const [, nasal] = breakdown('꽃잎', '꼰닙').changes
+    // Found by title rather than position: a syllable can carry several rules now, so an
+    // index is not a stable way to name one.
+    const nasal = breakdown('꽃잎', '꼰닙').changes.find(c => c.title === 'Nasal assimilation')
     assert.match(nasal.text, /ㄴ of 닙/)
   })
 })
