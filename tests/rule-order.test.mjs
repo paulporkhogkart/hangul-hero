@@ -63,7 +63,8 @@ describe('the trigger is named as it is said, not as it is written', () => {
 describe('single rule words are unaffected by the ordering', () => {
   for (const [word, pron, title] of [
     ['한국어', '한구거', 'Liaison'],
-    ['신라', '실라', 'ㄴ becomes ㄹ'],
+    // 신라 has moved out of this list: it now also explains the ll that its own ㄴ to ㄹ
+    // change produces, which is two rules and covered in the ㄹㄹ suite instead.
     // The statute lists 같이 under 구개음화, and it is not plain liaison: the consonant
     // changes as it crosses. This assertion used to say Liaison and was wrong.
     ['같이', '가치', 'Palatalisation'],

@@ -50,6 +50,7 @@ const STAGE = {
   rtoN: 5,             // ㄹ becomes ㄴ, creating the nasal that the next rule reacts to
   nasalisation: 6,
   lateralisation: 7,   // ㄴ becomes ㄹ
+  doubledR: 7,         // and the spelling consequence of ending up with two of them
   tensification: 8,    // never written, so it can sit last without misleading anyone
   glideeaten: 8,
   vowelheld: 9,
@@ -80,6 +81,8 @@ const WHY = {
     'Spelling here follows the word rather than the mouth. Keeping it constant means the same word looks the same everywhere, whoever is saying it and however carefully.',
   glideeaten:
     'A y glide is a movement toward the hard palate. After a consonant already made there the tongue has nowhere to travel from, so the glide never becomes audible.',
+  doubledR:
+    'One ㄹ between vowels is a quick tap of the tongue, close enough to an English r to be written as one. Held twice as long it stops being a tap at all and becomes the other sound, which is why the letter changes rather than simply doubling.',
 }
 
 /**
@@ -120,6 +123,24 @@ export function describeChanges(spelling, spoken) {
      * in `continue`, so whichever matched first won and every other change to that
      * syllable went unmentioned, which is how a 받침 vanished in silence.
      */
+    /*
+     * A rule that lives in the romanization rather than in the pronunciation.
+     *
+     * 떠올리다 is said exactly as it is written, so every check below stays quiet, yet
+     * the answer is tteoollida and not tteoolrida. 제2장 제2항 붙임 2: ㄹ is r before a
+     * vowel and l elsewhere, but ㄹㄹ is written ll. Nothing about the SOUND changes, so
+     * comparing spelling against pronunciation could never find it.
+     */
+    if (prevP?.final === 'ㄹ' && p.initial === 'ㄹ') {
+      out.push({
+        at: i,
+        type: 'doubledR',
+        reflected: true,
+        title: 'Two ㄹ become ll',
+        text: `${prevP.ch} ends in ㄹ and ${p.ch} begins with another. A single ㄹ in front of a vowel is written r, but a pair is one long held sound rather than two separate flicks, so it is written ll and not lr.`,
+      })
+    }
+
     initialSlot: if (s.initial !== p.initial) {
     // ── something appears where the spelling has a silent ㅇ ──────────────
     // Liaison and insertion look identical from this syllable alone. The previous
