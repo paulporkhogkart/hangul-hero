@@ -3,7 +3,7 @@
 // Feeds two surfaces from one derivation: the peek panel during a race, and the learn
 // page. They can never disagree because there is only one implementation.
 
-import { decomposeWord, FINAL_PARTS, VOWEL_PARTS } from './hangul.mjs'
+import { compose, decomposeWord, FINAL_PARTS, VOWEL_PARTS } from './hangul.mjs'
 import { INITIAL_RR, VOWEL_RR, FINAL_RR, romanizePronunciation, toWrittenForm, chooseVariant } from './rr.mjs'
 
 const NASAL = new Set(['ㄴ', 'ㅁ', 'ㅇ'])
@@ -220,13 +220,21 @@ export function describeChanges(spelling, spoken) {
       // 표준발음법 제29항. Fires at a compound boundary before a ㅣ-glide vowel.
       const GLIDE = { 'ㅣ': '이', 'ㅑ': '야', 'ㅕ': '여', 'ㅛ': '요', 'ㅠ': '유', 'ㅒ': '얘', 'ㅖ': '예' }
       const became = p.initial
+      // What the syllable looks like with the ㄴ in it, BEFORE the ㄹ next door acts on
+      // it. Naming the finished 려 as the result of inserting a ㄴ skipped straight past
+      // the step the following sentence then went back to explain.
+      const withN = compose({ initial: 'ㄴ', vowel: p.vowel, final: p.final })
       out.push({
         at: i,
         type: 'insertion',
         reflected: true,
         title: became === 'ㄹ' ? 'Inserted ㄴ, then ㄹ' : 'Inserted ㄴ',
-        text: `This is two words joined together and the second one starts with ${GLIDE[s.vowel] ?? s.vowel}, one of the ㅣ glide vowels. A ㄴ appears in front of it, so ${s.ch} is read as ${p.ch}.`
-          + (became === 'ㄹ' ? ` That new ㄴ then lands next to the ㄹ ending ${prev.ch}, and ㄴ beside ㄹ always gives way, so it is read as ㄹ.` : '')
+        // "first becomes" only when something happens to it afterwards. 꽃잎 stops at 닙,
+        // and promising a next step that never arrives is its own small confusion.
+        text: `This is two words joined together and the second one starts with ${GLIDE[s.vowel] ?? s.vowel}, one of the ㅣ glide vowels. A ㄴ appears in front of it, so ${s.ch} ${became === 'ㄹ' ? `first becomes ${withN}` : `is read as ${withN}`}.`
+          + (became === 'ㄹ'
+            ? ` That new ㄴ is then sitting next to the ㄹ ending ${prev.ch}, and ㄴ beside ㄹ gives way, so ${withN} is read as ${p.ch}.`
+            : '')
           + ` The inserted consonant also takes the slot ${prev.final ? `the ${prev.final} of ${prev.ch}` : 'the previous consonant'} would otherwise have slid into.`,
       })
       break initialSlot

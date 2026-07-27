@@ -36,6 +36,20 @@ describe('a rule that creates a sound comes before the rule it feeds', () => {
     assert.deepEqual(titles('닫히다', '다치다'), ['Aspiration', 'Palatalisation'])
   })
 
+  test('올여름 names the intermediate 녀 rather than jumping to 려', () => {
+    // The inserted consonant is a ㄴ. Announcing that a ㄴ appeared and therefore the
+    // syllable reads 려 skips the very step the next sentence goes back to explain.
+    const rule = breakdown('올여름', '올려름').changes.find(c => c.type === 'insertion')
+    assert.match(rule.text, /여 first becomes 녀/)
+    assert.match(rule.text, /녀 is read as 려/)
+  })
+
+  test('꽃잎 stops at 닙 and does not promise a step that never comes', () => {
+    const rule = breakdown('꽃잎', '꼰닙').changes.find(c => c.type === 'insertion')
+    assert.match(rule.text, /잎 is read as 닙/)
+    assert.doesNotMatch(rule.text, /first becomes/)
+  })
+
   test('붙이다 needs no aspiration, so it reports palatalisation alone', () => {
     assert.deepEqual(titles('붙이다', '부치다'), ['Palatalisation'])
   })
