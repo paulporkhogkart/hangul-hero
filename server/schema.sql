@@ -94,6 +94,36 @@ CREATE TABLE IF NOT EXISTS run_words (
 -- Which words a player is actually bad at, cheap to aggregate.
 CREATE INDEX IF NOT EXISTS run_words_word ON run_words(word);
 
+-- ── attempts ───────────────────────────────────────────────────────────────
+-- One row per word attempted, written DURING a run rather than after it, which is the
+-- whole reason this table exists alongside run_words: an abandoned run never reaches
+-- POST /api/run, and the mistakes made in it are exactly as real as the others.
+--
+-- Clean attempts are stored too, deliberately. A weakness is misses over exposures,
+-- and without the denominator the profile would only ever rediscover which rules are
+-- common. rules/jamo/kinds are small JSON arrays naming what the miss was pinned on
+-- (see src/core/profile.mjs); NULL when there is nothing to say.
+--
+-- From the moment a user has rows here, this is their source of truth and run_words
+-- only serves as pre-feature history, so nothing is counted twice.
+CREATE TABLE IF NOT EXISTS attempts (
+  id        INTEGER PRIMARY KEY,
+  user_id   TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  word      TEXT NOT NULL,
+  mode      INTEGER NOT NULL,
+  focus     INTEGER NOT NULL DEFAULT 0,       -- 1 when the word came from a focus drill
+  ms        INTEGER NOT NULL,
+  misses    INTEGER NOT NULL DEFAULT 0,
+  peeked    INTEGER NOT NULL DEFAULT 0,
+  rules     TEXT,                             -- JSON: rule types this miss is evidence against
+  jamo      TEXT,                             -- JSON: 'slot:jamo' keys likewise
+  kinds     TEXT,                             -- JSON: diagnose kinds seen on this word
+  at        INTEGER NOT NULL
+);
+
+-- The profile query: one user's recent attempts. Everything else derives in memory.
+CREATE INDEX IF NOT EXISTS attempts_user ON attempts(user_id, at);
+
 -- ── daily ──────────────────────────────────────────────────────────────────
 -- The seed is written once per day and never regenerated, so a restart cannot hand
 -- someone a different set of words to the people who played before it.

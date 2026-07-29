@@ -160,6 +160,26 @@ function wrap(db) {
     putDaily: db.prepare(`INSERT OR IGNORE INTO dailies (date, seed, created_at) VALUES (?, ?, ?)`),
 
     sweepClaims: db.prepare(`DELETE FROM runs WHERE user_id IS NULL AND claim_expires <= ?`),
+
+    insertAttempt: db.prepare(`
+      INSERT INTO attempts (user_id, word, mode, focus, ms, misses, peeked, rules, jamo, kinds, at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+
+    attemptsFor: db.prepare(`
+      SELECT word, ms, misses, peeked, rules, jamo, kinds, at FROM attempts
+      WHERE user_id = ? AND at > ? ORDER BY at DESC LIMIT ?`),
+
+    firstAttemptAt: db.prepare(`SELECT MIN(at) AS t FROM attempts WHERE user_id = ?`),
+
+    // The pre-feature history: per-word rows from completed runs, used only for runs
+    // finished before this user's first attempts row so nothing is counted twice.
+    historyWords: db.prepare(`
+      SELECT rw.word, rw.misses, rw.peeked, r.finished_at AS at
+      FROM run_words rw JOIN runs r ON r.id = rw.run_id
+      WHERE r.user_id = ? AND r.finished_at < ?
+      ORDER BY r.finished_at DESC LIMIT ?`),
+
+    sweepAttempts: db.prepare(`DELETE FROM attempts WHERE at <= ?`),
   }
 
   return {
@@ -252,9 +272,40 @@ function wrap(db) {
       return q.getDaily.get(date)
     },
 
+    /** One batch of mid-run attempt events, in one transaction for the same reason
+     *  recordRun uses one: a crash must not leave half a flush. */
+    recordAttempts(userId, { mode = 0, focus = false } = {}, events) {
+      const tx = db.prepare('BEGIN')
+      tx.run()
+      try {
+        const t = now()
+        for (const e of events) {
+          q.insertAttempt.run(
+            userId, e.word, mode, focus ? 1 : 0,
+            e.ms, e.misses ?? 0, e.peeked ? 1 : 0,
+            e.rules?.length ? JSON.stringify(e.rules) : null,
+            e.jamo?.length ? JSON.stringify(e.jamo) : null,
+            e.kinds?.length ? JSON.stringify(e.kinds) : null,
+            t,
+          )
+        }
+        db.prepare('COMMIT').run()
+      } catch (err) {
+        db.prepare('ROLLBACK').run()
+        throw err
+      }
+    },
+
+    attemptsFor: (userId, since, limit = 20000) => q.attemptsFor.all(userId, since, limit),
+    firstAttemptAt: userId => q.firstAttemptAt.get(userId)?.t ?? null,
+    historyWords: (userId, before, limit = 20000) => q.historyWords.all(userId, before, limit),
+
     sweep() {
       q.sweepSessions.run(now())
       q.sweepClaims.run(now())
+      // A year of attempts is far more than the profile window ever reads, and the SD
+      // card this lives on is shared. Old rows have nothing left to teach.
+      q.sweepAttempts.run(now() - 365 * 24 * 60 * 60 * 1000)
     },
   }
 }

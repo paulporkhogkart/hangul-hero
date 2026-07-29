@@ -7,6 +7,7 @@
   import Results from './routes/Results.svelte'
   import Board from './routes/Board.svelte'
   import Learn from './routes/Learn.svelte'
+  import Focus from './routes/Focus.svelte'
 
   let user = $state(null)
   let config = $state(null)
@@ -108,6 +109,7 @@
 
     <nav>
       <a href="/board" class:on={route.path === '/board'}>leaderboard</a>
+      <a href="/focus" class:on={route.path === '/focus'}>focus</a>
       <a href="/learn" class:on={route.path === '/learn'}>learn</a>
     </nav>
 
@@ -147,8 +149,10 @@
 <main class="page">
   {#if route.path === '/race' && live}
     {#key live.seed + live.mode}
-      <Race words={live.words} mode={live.mode} seed={live.seed} daily={live.daily} onFinish={finished} />
+      <Race words={live.words} mode={live.mode} seed={live.seed} daily={live.daily} {user} onFinish={finished} />
     {/key}
+  {:else if route.path === '/focus'}
+    <Focus {user} {config} {loginHref} />
   {:else if route.path === '/results' && outcome}
     <Results
       {outcome}

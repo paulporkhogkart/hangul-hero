@@ -42,6 +42,15 @@
       <span class="d">Daily</span>
       <span class="dsub">25 words, same for everyone, one scored go</span>
     </button>
+
+    <a class="focus" href="/focus">
+      <span class="d">Focus</span>
+      <span class="dsub">
+        {user
+          ? 'a drill built from the mistakes you keep making'
+          : 'sign in and it learns exactly what you keep missing'}
+      </span>
+    </a>
   </section>
 
   <p class="keys">
@@ -92,6 +101,21 @@
   .daily:hover { border-color: var(--accent); }
   .daily .d { font-size: 15px; color: var(--accent); letter-spacing: .04em; }
   .daily .dsub { font-size: 12px; color: var(--dim); }
+
+  /* A link dressed as the daily button, since it goes to a page rather than into a
+     run: the profile deserves a look before the drill starts. */
+  .focus {
+    display: grid;
+    justify-items: start;
+    gap: 3px;
+    padding: 16px 18px;
+    border: 1px solid var(--line);
+    text-align: left;
+    text-decoration: none;
+  }
+  .focus:hover { border-color: var(--accent); }
+  .focus .d { font-size: 15px; color: var(--accent); letter-spacing: .04em; }
+  .focus .dsub { font-size: 12px; color: var(--dim); }
 
   .facts { display: grid; gap: 12px; max-width: 62ch; }
   .facts p { margin: 0; font-size: 12.5px; color: var(--dim); line-height: 1.65; }

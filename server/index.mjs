@@ -9,6 +9,8 @@ import { randomBytes, createHash } from 'node:crypto'
 import { openDb } from './db.mjs'
 import { beginLogin, completeLogin, parseCookies, cookie, publicUser, SESSION_COOKIE, PROVIDERS } from './auth.mjs'
 import { sample, dailySeed, newSeed } from '../src/core/seed.mjs'
+import { tagWord, literalOf, weaknessProfile, buildFocusPool, READY_AT } from '../src/core/profile.mjs'
+import { normalize } from '../src/core/rr.mjs'
 
 const here = f => fileURLToPath(new URL(f, import.meta.url))
 
@@ -27,6 +29,11 @@ export const MODES = [10, 25, 50, 100, 250, 500]
 const CLAIM_TTL = 60 * 60 * 1000
 const MAX_BODY = 256 * 1024
 
+// How far back the mistake profile reads. Attempts older than this still exist (the
+// sweep keeps a year) but carry so little recency weight they are not worth loading.
+const PROFILE_WINDOW = 180 * 24 * 60 * 60 * 1000
+const KINDS = new Set(['literal', 'typo', 'vowel', 'wrong', 'empty'])
+
 // A stable secret so sessions survive a restart. Derived from the Discord secret
 // rather than stored separately, since losing it only means everyone signs in again.
 const SECRET = process.env.SESSION_SECRET
@@ -34,11 +41,26 @@ const SECRET = process.env.SESSION_SECRET
 
 const db = openDb(DB_FILE)
 const WORDS = JSON.parse(await readFile(here('../data/words.json'), 'utf8'))
+const WORD_BY = new Map(WORDS.map(w => [w.word, w]))
+
+// Which rules each word exercises and which jamo it contains, derived once at boot
+// (well under a second for the whole list, Pi included). The mistake profile and the
+// focus pool both join against this instead of storing tags on every attempt row.
+const TAGS = new Map(WORDS.map(w => [w.word, tagWord(w.word, w.pron)]))
+
+// The letter-by-letter reading, so diagnose() can name the game's defining mistake:
+// "that is what the letters say". Omitted where it cannot be told apart from a right
+// answer, or a wrong answer would be called literal on a word that never changes.
+const LITERAL = new Map(WORDS.map(w => {
+  const lit = literalOf(w.word)
+  return [w.word, w.accept.some(a => normalize(a) === normalize(lit)) ? null : lit]
+}))
 
 // Only what the client needs to run a race and draw a breakdown.
 const forClient = w => ({
   word: w.word, rr: w.rr, accept: w.accept, pron: w.pron,
   meaning: w.meaning, definition: w.definition, grade: w.grade, pos: w.pos,
+  literal: LITERAL.get(w.word) ?? undefined,
 })
 
 setInterval(() => db.sweep(), 60 * 60 * 1000).unref()
@@ -278,6 +300,119 @@ const routes = {
     if (!run) return fail(res, 404, 'no such run')
     json(res, 200, { run, words: db.runWords(run.id) })
   },
+
+  /**
+   * Mid-run mistake capture. The client batches one event per word and sends them
+   * while the run is still live, which is the entire point: an abandoned race never
+   * reaches POST /api/run, and the mistakes made in it are exactly as real as the
+   * others. Signed-out play sends nothing; there is nobody to remember it for.
+   */
+  'POST /api/attempts': async (req, res) => {
+    const user = userOf(req)
+    if (!user) return fail(res, 401, 'sign in first')
+    const body = await readJson(req)
+    const events = []
+    for (const e of Array.isArray(body.events) ? body.events.slice(0, 64) : []) {
+      const tag = TAGS.get(String(e.word ?? ''))
+      if (!tag) continue // not a word we ship, so not a row we store
+      // Charges are only accepted where they are possible: a rule the word exercises,
+      // a jamo the word contains. Anything else is a confused client or a bored curl.
+      events.push({
+        word: String(e.word),
+        ms: Math.max(0, Math.round(Number(e.ms) || 0)),
+        misses: Math.max(0, Math.min(99, Math.round(Number(e.misses) || 0))),
+        peeked: Boolean(e.peeked),
+        rules: (Array.isArray(e.rules) ? e.rules : []).filter(r => tag.rules.includes(r)).slice(0, 8),
+        jamo: (Array.isArray(e.jamo) ? e.jamo : []).filter(j => tag.jamo.includes(j)).slice(0, 6),
+        kinds: (Array.isArray(e.kinds) ? e.kinds : []).filter(k => KINDS.has(k)).slice(0, 4),
+      })
+    }
+    if (events.length) db.recordAttempts(user.id, { mode: Number(body.mode) || 0, focus: Boolean(body.focus) }, events)
+    json(res, 200, { ok: true, stored: events.length })
+  },
+
+  'GET /api/profile': (req, res) => {
+    const user = userOf(req)
+    if (!user) return fail(res, 401, 'sign in first')
+    json(res, 200, publicProfile(profileFor(user.id)))
+  },
+
+  /**
+   * A run built from the player's own weaknesses. Deliberately never a board run:
+   * every pool is personal, so no two players' times are comparable and putting them
+   * on a board would only corrupt it. The client races it and records attempts, and
+   * the improvement shows up in the profile rather than in a ranking.
+   */
+  'GET /api/focus': (req, res, url) => {
+    const user = userOf(req)
+    if (!user) return fail(res, 401, 'sign in first')
+    const count = Math.min(50, Math.max(5, Number(url.searchParams.get('count')) || 10))
+    const p = profileFor(user.id)
+    if (!p.ready) return json(res, 200, { ready: false, have: p.events, need: READY_AT })
+    const seed = newSeed()
+    const pool = buildFocusPool(WORDS, p, { count, seed, tags: TAGS })
+    json(res, 200, {
+      ready: true,
+      seed,
+      mode: pool.length,
+      words: pool.map(forClient),
+      profile: publicProfile(p),
+    })
+  },
+}
+
+/**
+ * Everything known about one player's mistakes, folded into ranked weaknesses.
+ *
+ * Two sources, split cleanly in time so nothing is counted twice: attempts rows from
+ * the first one onward, and run_words from runs completed before that. The old rows
+ * know WHICH words were missed but not where inside them, so a historical miss charges
+ * every rule its word exercises: a coarse warm start that precisely attributed new
+ * rows outweigh more with every run played.
+ */
+function profileFor(userId) {
+  const t = Date.now()
+  const parse = s => { try { return JSON.parse(s) ?? [] } catch { return [] } }
+  const events = []
+
+  const first = db.firstAttemptAt(userId)
+  for (const h of db.historyWords(userId, first ?? t)) {
+    const tag = TAGS.get(h.word)
+    if (!tag) continue
+    events.push({
+      word: h.word, rules: tag.rules, jamo: tag.jamo,
+      missedRules: h.misses > 0 ? tag.rules : [], missedJamo: [],
+      misses: h.misses, peeked: Boolean(h.peeked), at: h.at,
+    })
+  }
+  for (const r of db.attemptsFor(userId, t - PROFILE_WINDOW)) {
+    const tag = TAGS.get(r.word)
+    if (!tag) continue
+    events.push({
+      word: r.word, rules: tag.rules, jamo: tag.jamo,
+      missedRules: parse(r.rules), missedJamo: parse(r.jamo),
+      misses: r.misses, peeked: Boolean(r.peeked), at: r.at,
+    })
+  }
+  return weaknessProfile(events, { now: t })
+}
+
+/** The slice of a profile the client shows. Weak words get their card fields back so
+ *  the list can say more than bare hangul. */
+function publicProfile(p) {
+  return {
+    ready: p.ready,
+    have: p.events,
+    need: READY_AT,
+    rules: p.rules.slice(0, 6).map(({ key, name, rate, exposures }) =>
+      ({ key, name, rate, exposures: Math.round(exposures) })),
+    jamo: p.jamo.slice(0, 6).map(({ key, rate, exposures }) =>
+      ({ key, rate, exposures: Math.round(exposures) })),
+    words: p.words.slice(0, 12).flatMap(({ key, rate }) => {
+      const w = WORD_BY.get(key)
+      return w ? [{ word: key, rr: w.rr, meaning: w.meaning, rate }] : []
+    }),
+  }
 }
 
 /** Where a finished run landed, and enough of the board around it to mean something. */

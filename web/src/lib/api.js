@@ -25,6 +25,10 @@ export const api = {
   submit: run => req('/api/run', { method: 'POST', body: run }),
   claim: token => req('/api/run/claim', { method: 'POST', body: { token } }),
 
+  attempts: payload => req('/api/attempts', { method: 'POST', body: payload }),
+  profile: () => req('/api/profile'),
+  focus: count => req(`/api/focus?count=${count}`),
+
   board: (mode, view = 'all') => req(`/api/board?mode=${mode}&view=${view}`),
   dailyBoard: (mode, date) => req(`/api/board/daily?mode=${mode}&date=${date}`),
 }

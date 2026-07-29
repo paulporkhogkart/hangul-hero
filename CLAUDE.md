@@ -56,10 +56,27 @@ The romanization split is the load-bearing design decision:
 letter marks one letter). `scoring.mjs` holds every time penalty in one place. `seed.mjs` keeps
 word selection a pure function of `(seed, pool, count)` so a daily is byte-identical everywhere.
 
+`profile.mjs` turns misses into a mistake profile. `attributeMiss` pins one wrong answer on a
+rule or a jamo using where the marking diverged and what fate that jamo had, and deliberately
+declines when the evidence is ambiguous (a truncated answer charges nothing). `weaknessProfile`
+ranks weaknesses as misses over exposures (clean attempts are logged for exactly this reason),
+Wilson-bounded and recency-decayed so the profile heals as the player improves. `buildFocusPool`
+assembles a drill from failed words, then words exercising the weak rules, then words carrying
+the misread jamo. The server also derives each word's `literal` form here, the letter-by-letter
+reading `rr.mjs` produces from a spelling, which is what lets `diagnose()` name the game's
+defining mistake instead of shrugging.
+
 **`server/`** has no runtime dependencies. Routes are a flat `"METHOD /path"` object in
 `index.mjs`; `db.mjs` wraps `node:sqlite` with prepared statements and a column-presence
 migration; `auth.mjs` does OAuth (Discord). Anonymous runs get a claim token so a race played
 before signing in can still reach a board.
+
+**Mistakes are captured mid-run, not at run end.** `Race.svelte` batches one event per word,
+carrying whatever each miss was pinned on, and flushes to `POST /api/attempts` while the run is
+live (`sendBeacon` on pagehide), because an abandoned race is evidence too and `POST /api/run`
+never hears about it. The `attempts` table is the profile's source of truth from a user's first
+row onward; `run_words` from runs finished before that serve as coarse pre-feature history, so
+nothing is counted twice. `GET /api/focus` builds the personal drill from the profile.
 
 **`web/`** is the Vite root. Svelte 5 runes, a hand-rolled router in `lib/router.svelte.js`, no
 component library.
@@ -85,6 +102,10 @@ one LFS-tracked `assets/audio.pack` with an offset index rather than 6,153 loose
   randomly; the Daily is one shared seed per date with a Wordle-style clipboard share, and one
   scored attempt.
 - **Content words only.** No set phrases, no particles or bound nouns.
+- **Focus mode is personal and unranked, and requires sign-in.** Every drill pool is built
+  from one player's own miss rates, so no two players race the same words and the times are
+  not comparable; a board over them would be a lie. Sign-in is the identity the longitudinal
+  profile needs, consistent with boards requiring it.
 - **Mnemonic glyphs are hand-authored SVG** where the jamo strokes are the drawing's structure.
   Not generated images. See `design/glyphs.html`.
 - **Anti-cheat is deliberately not attempted.** The rate limit exists to protect a shared 29GB

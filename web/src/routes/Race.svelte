@@ -1,12 +1,13 @@
 <script>
   import { breakdown } from '@core/breakdown.mjs'
   import { isCorrect, diagnose, markAnswer, locateIndex } from '@core/answer.mjs'
+  import { attributeMiss } from '@core/profile.mjs'
   import { missCost, REVEAL_PENALTY_MS } from '@core/scoring.mjs'
   import { play, speak, unlock } from '../lib/audio.svelte.js'
-  import { formatTime } from '../lib/api.js'
+  import { api, formatTime } from '../lib/api.js'
   import WordAnalysis from '../components/WordAnalysis.svelte'
 
-  let { words, mode, seed, daily = null, onFinish } = $props()
+  let { words, mode, seed, daily = null, focus = false, user = null, onFinish } = $props()
 
   let index = $state(0)
   let typed = $state('')
@@ -24,6 +25,60 @@
   let hint = $state(null)
   let input = $state(null)
   const results = []
+
+  /**
+   * The mistake log, flushed to the server DURING the run rather than with it.
+   *
+   * POST /api/run only fires when a run completes, so everything learned in an
+   * abandoned race used to evaporate, and abandoned races are not a corner case: a bad
+   * start is precisely when someone quits. Events are batched to stay far inside the
+   * rate limit (a per-word POST from a 500 run would trip it), sent in the background
+   * on a cadence, and pushed out through sendBeacon when the tab itself goes away.
+   *
+   * A failed send is dropped without retry. This is study data, not a score; a retry
+   * queue is more machinery than the data is worth.
+   */
+  const FLUSH_AT = 20
+  const pending = []
+  const fresh = () => ({ rules: new Set(), jamo: new Set(), kinds: new Set() })
+  let faults = fresh() // what this word's misses have been pinned on, so far
+
+  function flush(viaBeacon = false) {
+    if (!user || !pending.length) return
+    const payload = { mode, focus, events: pending.splice(0) }
+    if (viaBeacon && navigator.sendBeacon) {
+      navigator.sendBeacon('/api/attempts', new Blob([JSON.stringify(payload)], { type: 'application/json' }))
+      return
+    }
+    api.attempts(payload).catch(() => {})
+  }
+
+  function record(e) {
+    if (!user) return
+    pending.push({ ...e, rules: [...faults.rules], jamo: [...faults.jamo], kinds: [...faults.kinds] })
+    if (pending.length >= FLUSH_AT) flush()
+  }
+
+  // The word in progress when the page disappears still carries evidence, provided it
+  // was actually fought with. If the player returns through the bfcache and then beats
+  // the word, it is recorded a second time as completed; a rare, mildly duplicated
+  // exposure is better than losing the common case.
+  $effect(() => {
+    if (!user) return
+    const abandon = viaBeacon => {
+      if (status === 'racing' && word && (misses > 0 || bought)) {
+        record({ word: word.word, ms: Math.round(performance.now() - wordStartedAt), misses, peeked: bought })
+      }
+      flush(viaBeacon)
+    }
+    const onPagehide = () => abandon(true)
+    window.addEventListener('pagehide', onPagehide)
+    return () => {
+      window.removeEventListener('pagehide', onPagehide)
+      // Unmounting is the router leaving the page, so ordinary fetch still works.
+      abandon(false)
+    }
+  })
 
   /**
    * The ladder. Each rung is charged for what it actually reveals.
@@ -125,6 +180,7 @@
     split = null
     bought = false
     hidden = false
+    faults = fresh()
   }
 
   function submit() {
@@ -133,14 +189,16 @@
     if (!value) return
 
     if (isCorrect(word, value)) {
+      const ms = Math.round(performance.now() - wordStartedAt)
       results.push({
         word: word.word,
         answer: word.rr,
         pron: word.pron,
-        ms: Math.round(performance.now() - wordStartedAt),
+        ms,
         misses,
         peeked: bought,
       })
+      record({ word: word.word, ms, misses, peeked: bought })
       play('correct')
       speak(word.word)
       flash = 'correct'
@@ -164,6 +222,14 @@
     errorAt = marked.firstBadIndex == null ? null : locateIndex(parsed.syllables, marked.firstBadIndex)
 
     const d = diagnose(word, value)
+
+    // Pin this miss on whatever it is evidence against, before the next attempt
+    // overwrites the marking. The union over a word's misses travels with its event.
+    const fault = attributeMiss(parsed, marked, d)
+    for (const r of fault.rules) faults.rules.add(r)
+    for (const j of fault.jamo) faults.jamo.add(j)
+    if (d.kind) faults.kinds.add(d.kind)
+
     const wrongCount = marked.marks.filter(m => !m.ok).length
     hint = marked.truncated
       ? 'Right as far as it goes, but there is more to come.'
@@ -188,6 +254,7 @@
   function finish() {
     status = 'done'
     play('finish')
+    flush()
     onFinish({
       seed, mode, daily,
       elapsedMs: Math.round(performance.now() - startedAt),
