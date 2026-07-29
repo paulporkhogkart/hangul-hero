@@ -84,6 +84,34 @@ describe('attributeMiss', () => {
     assert.ok(f.jamo.includes('initial:ㄱ'))
   })
 
+  test('tensing is convicted by the letter typed, not by the syllable hit', () => {
+    // Both of these miss inside the tensed syllable of 학교, and neither typed the
+    // tensed sound. Charging tensing here would rank rules by where mistakes land
+    // rather than by what they were, which is the exact failure the denominators
+    // exist to prevent.
+    const vowelSlip = miss('학교', '학꾜', 'hakgyo', 'hakgyu')
+    assert.ok(!vowelSlip.rules.includes('tensification'), `charged tensing for a vowel slip: ${vowelSlip.rules}`)
+    assert.ok(vowelSlip.jamo.includes('vowel:ㅛ'))
+
+    const strayLetter = miss('학교', '학꾜', 'hakgyo', 'hakryo')
+    assert.ok(!strayLetter.rules.includes('tensification'), `charged tensing for a stray r: ${strayLetter.rules}`)
+    assert.ok(strayLetter.jamo.includes('initial:ㄱ'))
+  })
+
+  test('a doubled sibilant is tensing evidence too', () => {
+    // 실수 is heard 실쑤. The doubled s is how that sound comes out in type.
+    const f = miss('실수', '실쑤', 'silsu', 'silssu')
+    assert.ok(f.rules.includes('tensification'), `expected tensification in ${f.rules}`)
+  })
+
+  test('typing the vowel as it is said charges the held-vowel rule', () => {
+    // ㅢ is commonly said ㅣ and always written ui. A miss on that vowel is the
+    // ui/i confusion in almost every case, so the vowel slot alone convicts.
+    const f = miss('희다', '히다', 'huida', 'hida')
+    assert.ok(f.rules.includes('vowelheld'), `expected vowelheld in ${f.rules}`)
+    assert.ok(f.jamo.includes('vowel:ㅢ'))
+  })
+
   test('missing the inserted ㄴ charges the insertion', () => {
     const f = miss('담요', '담뇨', 'damnyo', 'damyo')
     assert.ok(f.rules.includes('insertion'), `expected insertion in ${f.rules}`)

@@ -115,11 +115,35 @@ export function attributeMiss(parsed, marked, diag) {
     if (!rules.size) jamo.add(`${part.slot}:${part.jamo}`)
   } else {
     jamo.add(`${part.slot}:${part.jamo}`)
-    for (const c of here) if (!c.reflected) rules.add(c.type)
+
+    /*
+     * Rules that live only in the ear are charged on letter evidence, never on
+     * position. Tensing and the held vowels do not change the expected answer, so a
+     * miss merely landing on their syllable proves nothing: hakgyu is a vowel slip
+     * that has nothing to do with the ㄲ in 학꾜, and charging tensing for it would
+     * quietly turn "rules you miss" back into "rules that exist". What convicts is
+     * typing the sound the writing ignores: the voiceless k/t/p where g/d/b is
+     * written, a doubled s or j, the spoken vowel where the spelled one belongs.
+     */
+    const typedBad = marked.marks?.find(m => !m.ok)?.ch?.toLowerCase() ?? null
+    for (const c of here) {
+      if (c.reflected) continue
+      if (c.type === 'tensification') {
+        if (part.slot === 'initial' && typedBad && typedBad === TENSE_TRAP[part.rr]) rules.add(c.type)
+      } else if (c.type === 'vowelheld') {
+        if (part.slot === 'vowel') rules.add(c.type)
+      } else {
+        rules.add(c.type)
+      }
+    }
   }
 
   return { rules: [...rules], jamo: [...jamo] }
 }
+
+/** What a tensed consonant sounds like in the romanization the player reaches for:
+ *  ㄲ begins with k where ㄱ writes g, and the sibilants simply double. */
+const TENSE_TRAP = { g: 'k', d: 't', b: 'p', s: 's', j: 'j' }
 
 /** Attempts to have seen before the profile is worth acting on. Below this the focus
  *  endpoint says "play more" rather than drilling noise. */

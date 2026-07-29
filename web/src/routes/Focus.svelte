@@ -14,6 +14,11 @@
   const SLOT = { initial: 'initial', vowel: 'vowel', final: 'final' }
   const pct = rate => `${Math.round(rate * 100)}%`
 
+  // Rules that change what you hear but not what you type. Shown with a tag, because
+  // "you miss tensing" without it reads as a contradiction: the miss it names is
+  // typing the sound instead of the spelling.
+  const UNWRITTEN = new Set(['tensification', 'vowelheld'])
+
   async function load(n) {
     count = n
     state = 'loading'
@@ -79,7 +84,7 @@
           <h2>Rules you miss</h2>
           {#each data.profile.rules as r}
             <p class="row">
-              <span class="what">{r.name}</span>
+              <span class="what">{r.name}{#if UNWRITTEN.has(r.key)} <span class="slot">heard, never written</span>{/if}</span>
               <span class="stat tabular">{pct(r.rate)}</span>
               <span class="n">of {r.exposures} met</span>
             </p>
