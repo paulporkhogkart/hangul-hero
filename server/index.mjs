@@ -324,6 +324,11 @@ const routes = {
         peeked: Boolean(e.peeked),
         rules: (Array.isArray(e.rules) ? e.rules : []).filter(r => tag.rules.includes(r)).slice(0, 8),
         jamo: (Array.isArray(e.jamo) ? e.jamo : []).filter(j => tag.jamo.includes(j)).slice(0, 6),
+        subs: (Array.isArray(e.subs) ? e.subs : []).filter(s => {
+          if (typeof s !== 'string' || s.length > 12) return false
+          const gt = s.lastIndexOf('>')
+          return gt > 0 && tag.jamo.includes(s.slice(0, gt)) && /^[a-z]$/.test(s.slice(gt + 1))
+        }).slice(0, 6),
         kinds: (Array.isArray(e.kinds) ? e.kinds : []).filter(k => KINDS.has(k)).slice(0, 4),
       })
     }
@@ -390,7 +395,7 @@ function profileFor(userId) {
     if (!tag) continue
     events.push({
       word: r.word, rules: tag.rules, jamo: tag.jamo,
-      missedRules: parse(r.rules), missedJamo: parse(r.jamo),
+      missedRules: parse(r.rules), missedJamo: parse(r.jamo), subs: parse(r.subs),
       misses: r.misses, peeked: Boolean(r.peeked), at: r.at,
     })
   }
@@ -406,8 +411,12 @@ function publicProfile(p) {
     need: READY_AT,
     rules: p.rules.slice(0, 6).map(({ key, name, rate, exposures }) =>
       ({ key, name, rate, exposures: Math.round(exposures) })),
-    jamo: p.jamo.slice(0, 6).map(({ key, rate, exposures }) =>
-      ({ key, rate, exposures: Math.round(exposures) })),
+    jamo: p.jamo.slice(0, 6).map(({ key, rate, exposures, typedAs }) => ({
+      key,
+      rate,
+      exposures: Math.round(exposures),
+      typedAs: typedAs ? { ch: typedAs.ch, share: Number(typedAs.share.toFixed(2)) } : null,
+    })),
     words: p.words.slice(0, 12).flatMap(({ key, rate }) => {
       const w = WORD_BY.get(key)
       return w ? [{ word: key, rr: w.rr, meaning: w.meaning, rate }] : []

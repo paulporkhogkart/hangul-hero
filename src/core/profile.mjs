@@ -60,7 +60,17 @@ export function tagWord(spelling, pron) {
 }
 
 /**
- * Pin one wrong answer on a rule or on a jamo, or decline to.
+ * Rules that change what you hear but never what you type. They are real Korean and
+ * the race panel explains them, but they are excluded from the weakness profile on
+ * principle: the correct answer never depends on them, so no drill can train them and
+ * "you miss tensing" is a claim the game cannot have evidence for. The one trace they
+ * do leave, typing the sound instead of the spelling (hakkyo for 학교), is recorded as
+ * what it demonstrably is: a letter substitution.
+ */
+export const EAR_ONLY = new Set(['tensification', 'vowelheld'])
+
+/**
+ * Pin one wrong answer on a rule, a jamo, or a substitution, or decline to.
  *
  * The whole point is restraint. Charging every rule in the word on every miss would
  * just rank rules by how often they occur, so a miss only becomes evidence when the
@@ -69,8 +79,10 @@ export function tagWord(spelling, pron) {
  *   on a jamo the rules rewrote (fate changed/arrived/moved/fused)
  *       -> the rules that did the rewriting, which is what the player failed to apply
  *   on a jamo the rules left alone (fate kept)
- *       -> the jamo itself, plus any rule whose trap is precisely that the writing
- *          ignores the sound (tensing, the held ㅢ/ㅚ vowels)
+ *       -> the jamo itself, and when a wrong letter was actually typed (rather than
+ *          one going missing), the DIRECTION too: 'initial:ㅂ>p' says the b of ㅂ came
+ *          out as p, which is how habits like voicing confusion or typing the heard
+ *          tensed sound show up without any rule being accused
  *   the whole answer matches the literal letter-by-letter reading
  *       -> every reflected rule at once: the player read the spelling, not the word
  *
@@ -78,11 +90,11 @@ export function tagWord(spelling, pron) {
  * stopped, and what they never attempted is not something they got wrong.
  */
 export function attributeMiss(parsed, marked, diag) {
-  const none = { rules: [], jamo: [] }
+  const none = { rules: [], jamo: [], subs: [] }
   if (!parsed) return none
 
   if (diag?.kind === 'literal') {
-    return { rules: [...new Set(parsed.changes.filter(c => c.reflected).map(c => c.type))], jamo: [] }
+    return { rules: [...new Set(parsed.changes.filter(c => c.reflected).map(c => c.type))], jamo: [], subs: [] }
   }
   if (!marked || marked.truncated || marked.firstBadIndex == null) return none
 
@@ -101,10 +113,10 @@ export function attributeMiss(parsed, marked, diag) {
 
   const rules = new Set()
   const jamo = new Set()
-  const here = parsed.changes.filter(c => c.at === at)
+  const subs = new Set()
 
   if (part.fate !== 'kept') {
-    for (const c of here) if (c.reflected) rules.add(c.type)
+    for (const c of parsed.changes) if (c.at === at && c.reflected) rules.add(c.type)
     // A final that moved or fused is explained by the rule sitting on the syllable it
     // arrived in, the same reach-back rule-coverage.test.mjs relies on.
     if (part.fate === 'moved' || part.fate === 'fused') {
@@ -114,36 +126,20 @@ export function attributeMiss(parsed, marked, diag) {
     // so fall back to the jamo rather than silently dropping the evidence.
     if (!rules.size) jamo.add(`${part.slot}:${part.jamo}`)
   } else {
+    // The rules left this jamo alone, so whatever went wrong here is about the letter
+    // itself. When a wrong letter was typed (a substitution or an intrusion, not a
+    // letter simply missing), record which one: the direction is the diagnosis.
+    // Doubling the letter itself (silssu for silsu) stays a plain jamo miss, since
+    // "types s as s" is not a sentence.
     jamo.add(`${part.slot}:${part.jamo}`)
-
-    /*
-     * Rules that live only in the ear are charged on letter evidence, never on
-     * position. Tensing and the held vowels do not change the expected answer, so a
-     * miss merely landing on their syllable proves nothing: hakgyu is a vowel slip
-     * that has nothing to do with the ㄲ in 학꾜, and charging tensing for it would
-     * quietly turn "rules you miss" back into "rules that exist". What convicts is
-     * typing the sound the writing ignores: the voiceless k/t/p where g/d/b is
-     * written, a doubled s or j, the spoken vowel where the spelled one belongs.
-     */
     const typedBad = marked.marks?.find(m => !m.ok)?.ch?.toLowerCase() ?? null
-    for (const c of here) {
-      if (c.reflected) continue
-      if (c.type === 'tensification') {
-        if (part.slot === 'initial' && typedBad && typedBad === TENSE_TRAP[part.rr]) rules.add(c.type)
-      } else if (c.type === 'vowelheld') {
-        if (part.slot === 'vowel') rules.add(c.type)
-      } else {
-        rules.add(c.type)
-      }
+    if (typedBad && /^[a-z]$/.test(typedBad) && typedBad !== part.rr?.[0]) {
+      subs.add(`${part.slot}:${part.jamo}>${typedBad}`)
     }
   }
 
-  return { rules: [...rules], jamo: [...jamo] }
+  return { rules: [...rules], jamo: [...jamo], subs: [...subs] }
 }
-
-/** What a tensed consonant sounds like in the romanization the player reaches for:
- *  ㄲ begins with k where ㄱ writes g, and the sibilants simply double. */
-const TENSE_TRAP = { g: 'k', d: 't', b: 'p', s: 's', j: 'j' }
 
 /** Attempts to have seen before the profile is worth acting on. Below this the focus
  *  endpoint says "play more" rather than drilling noise. */
@@ -180,6 +176,7 @@ function wilson(misses, n, z) {
 export function weaknessProfile(events, { now = Date.now(), halfLifeDays = 45, z = 1.0 } = {}) {
   const life = halfLifeDays * 24 * 60 * 60 * 1000
   const acc = { rules: new Map(), jamo: new Map(), words: new Map() }
+  const subsAcc = new Map() // 'slot:jamo' -> Map(typed letter -> weight)
   const bump = (map, key, w, missed) => {
     const e = map.get(key) ?? { exposures: 0, misses: 0 }
     e.exposures += w
@@ -191,9 +188,23 @@ export function weaknessProfile(events, { now = Date.now(), halfLifeDays = 45, z
     const w = 0.5 ** (Math.max(0, now - (ev.at ?? now)) / life)
     const missedR = new Set(ev.missedRules ?? [])
     const missedJ = new Set(ev.missedJamo ?? [])
-    for (const r of ev.rules ?? []) bump(acc.rules, r, w, missedR.has(r))
+    // Ear-only rules are skipped on BOTH sides of the ratio. Stored rows may still
+    // charge them (older clients, and the backfill charges everything a missed word
+    // exercises), so the filter has to live here, where the profile is formed, or
+    // history keeps resurrecting a rule the game cannot actually test.
+    for (const r of ev.rules ?? []) {
+      if (EAR_ONLY.has(r)) continue
+      bump(acc.rules, r, w, missedR.has(r))
+    }
     for (const j of ev.jamo ?? []) bump(acc.jamo, j, w, missedJ.has(j))
     bump(acc.words, ev.word, w, (ev.misses ?? 0) > 0 || Boolean(ev.peeked))
+    for (const s of ev.subs ?? []) {
+      const gt = s.lastIndexOf('>')
+      if (gt < 1) continue
+      const m = subsAcc.get(s.slice(0, gt)) ?? new Map()
+      m.set(s.slice(gt + 1), (m.get(s.slice(gt + 1)) ?? 0) + w)
+      subsAcc.set(s.slice(0, gt), m)
+    }
   }
 
   const scored = (map, minExposure) => [...map.entries()]
@@ -207,11 +218,21 @@ export function weaknessProfile(events, { now = Date.now(), halfLifeDays = 45, z
     .filter(e => e.misses > 0 && e.exposures >= minExposure)
     .sort((a, b) => b.score - a.score || b.rate - a.rate)
 
+  // A letter weakness carries its direction when one dominates: 'initial:ㅂ' with
+  // typedAs p is "you write the b of ㅂ as p", which is the sentence the player
+  // actually needs. share is that letter's fraction of the (weighted) misses.
+  const withDirection = e => {
+    const m = subsAcc.get(e.key)
+    if (!m?.size) return { ...e, typedAs: null }
+    const [ch, weight] = [...m.entries()].sort((a, b) => b[1] - a[1])[0]
+    return { ...e, typedAs: { ch, share: Math.min(1, weight / e.misses) } }
+  }
+
   return {
     events: events.length,
     ready: events.length >= READY_AT,
     rules: scored(acc.rules, 4).map(e => ({ ...e, name: RULE_NAMES[e.key] ?? e.key })),
-    jamo: scored(acc.jamo, 4),
+    jamo: scored(acc.jamo, 4).map(withDirection),
     // A single miss qualifies a word. Unlike a rule, a word needs no corroboration to
     // be worth seeing again; the cost of a false positive is one easy word in a drill.
     words: scored(acc.words, 0),
@@ -258,7 +279,9 @@ export function buildFocusPool(words, profile, { count, seed, tags }) {
   }
 
   if (room() > 0) {
-    take(words.filter(w => (tags.get(w.word)?.rules.length ?? 0) > 0 && !picked.has(w.word)),
+    // Filler must still drill something typeable: a word whose only change is
+    // ear-only reads exactly as it is written, so it exercises nothing.
+    take(words.filter(w => (tags.get(w.word)?.rules ?? []).some(r => !EAR_ONLY.has(r)) && !picked.has(w.word)),
       room(), `${seed}:fill`)
   }
 

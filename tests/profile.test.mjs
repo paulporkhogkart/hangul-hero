@@ -70,46 +70,42 @@ describe('attributeMiss', () => {
     assert.ok(f.rules.includes('nasalisation'))
   })
 
-  test('a wrong letter on an unchanged jamo charges the jamo, not a rule', () => {
+  test('a wrong letter on an unchanged jamo charges the jamo, with its direction', () => {
     const f = miss('하다', '하다', 'hada', 'hata')
     assert.deepEqual(f.rules, [])
     assert.deepEqual(f.jamo, ['initial:ㄷ'])
+    assert.deepEqual(f.subs, ['initial:ㄷ>t'])
   })
 
-  test('typing the tensed sound charges tensing, the rule the writing ignores', () => {
-    // 학교 is heard 학꾜. The written g is a jamo the rules left alone, so the fate is
-    // "kept", and the trap is precisely that the sound and the writing disagree.
-    const f = miss('학교', '학꾜', 'hakgyo', 'hakkyo')
-    assert.ok(f.rules.includes('tensification'), `expected tensification in ${f.rules}`)
-    assert.ok(f.jamo.includes('initial:ㄱ'))
+  test('ear-only rules are never charged, whatever was typed', () => {
+    // 학교 is heard 학꾜, but the answer never depends on that: a rule that cannot
+    // change what you type cannot be missed in a game that asks for the written form.
+    // Even hakkyo, the tensed sound typed out, is recorded as what it demonstrably
+    // is: the g of ㄱ coming out as k.
+    const heard = miss('학교', '학꾜', 'hakgyo', 'hakkyo')
+    assert.deepEqual(heard.rules, [])
+    assert.ok(heard.jamo.includes('initial:ㄱ'))
+    assert.deepEqual(heard.subs, ['initial:ㄱ>k'])
+
+    const held = miss('희다', '히다', 'huida', 'hida')
+    assert.deepEqual(held.rules, [])
+    assert.ok(held.jamo.includes('vowel:ㅢ'))
   })
 
-  test('tensing is convicted by the letter typed, not by the syllable hit', () => {
-    // Both of these miss inside the tensed syllable of 학교, and neither typed the
-    // tensed sound. Charging tensing here would rank rules by where mistakes land
-    // rather than by what they were, which is the exact failure the denominators
-    // exist to prevent.
+  test('a substitution records the direction, not just the letter', () => {
     const vowelSlip = miss('학교', '학꾜', 'hakgyo', 'hakgyu')
-    assert.ok(!vowelSlip.rules.includes('tensification'), `charged tensing for a vowel slip: ${vowelSlip.rules}`)
-    assert.ok(vowelSlip.jamo.includes('vowel:ㅛ'))
+    assert.deepEqual(vowelSlip.subs, ['vowel:ㅛ>u'])
 
     const strayLetter = miss('학교', '학꾜', 'hakgyo', 'hakryo')
-    assert.ok(!strayLetter.rules.includes('tensification'), `charged tensing for a stray r: ${strayLetter.rules}`)
-    assert.ok(strayLetter.jamo.includes('initial:ㄱ'))
+    assert.deepEqual(strayLetter.subs, ['initial:ㄱ>r'])
   })
 
-  test('a doubled sibilant is tensing evidence too', () => {
-    // 실수 is heard 실쑤. The doubled s is how that sound comes out in type.
+  test('doubling a letter is a jamo miss with no direction', () => {
+    // silssu for 실수: the extra s IS an s, and "types s as s" is not a sentence.
     const f = miss('실수', '실쑤', 'silsu', 'silssu')
-    assert.ok(f.rules.includes('tensification'), `expected tensification in ${f.rules}`)
-  })
-
-  test('typing the vowel as it is said charges the held-vowel rule', () => {
-    // ㅢ is commonly said ㅣ and always written ui. A miss on that vowel is the
-    // ui/i confusion in almost every case, so the vowel slot alone convicts.
-    const f = miss('희다', '히다', 'huida', 'hida')
-    assert.ok(f.rules.includes('vowelheld'), `expected vowelheld in ${f.rules}`)
-    assert.ok(f.jamo.includes('vowel:ㅢ'))
+    assert.deepEqual(f.rules, [])
+    assert.ok(f.jamo.includes('initial:ㅅ'))
+    assert.deepEqual(f.subs, [])
   })
 
   test('missing the inserted ㄴ charges the insertion', () => {
@@ -184,6 +180,32 @@ describe('weaknessProfile', () => {
     const p = weaknessProfile([ev({ peeked: true })], { now: NOW })
     assert.equal(p.words[0].key, '독립')
     assert.equal(p.rules.length, 0)
+  })
+
+  test('ear-only rules never reach the profile, even from stored rows', () => {
+    // Older attempts rows and the run_words backfill both charge tensing, the first
+    // because the client once did, the second because a historical miss charges every
+    // rule its word exercises. The filter has to hold at profile time or history
+    // keeps resurrecting a rule the game cannot test.
+    const events = Array.from({ length: 8 }, () => ev({
+      rules: ['tensification', 'rtoN'], missedRules: ['tensification', 'rtoN'], misses: 1,
+    }))
+    const p = weaknessProfile(events, { now: NOW })
+    assert.ok(p.rules.some(r => r.key === 'rtoN'))
+    assert.ok(!p.rules.some(r => r.key === 'tensification'), `tensification survived: ${p.rules.map(r => r.key)}`)
+  })
+
+  test('a letter weakness carries the direction it usually fails in', () => {
+    const events = Array.from({ length: 8 }, (_, i) => ev({
+      jamo: ['initial:ㅂ'],
+      missedJamo: i < 4 ? ['initial:ㅂ'] : [],
+      misses: i < 4 ? 1 : 0,
+      subs: i < 3 ? ['initial:ㅂ>p'] : i === 3 ? ['initial:ㅂ>m'] : [],
+    }))
+    const p = weaknessProfile(events, { now: NOW })
+    const b = p.jamo.find(j => j.key === 'initial:ㅂ')
+    assert.equal(b.typedAs.ch, 'p')
+    assert.ok(b.typedAs.share > 0.7 && b.typedAs.share <= 0.76, `share ${b.typedAs.share}`)
   })
 
   test('readiness is a plain event count', () => {

@@ -117,6 +117,7 @@ CREATE TABLE IF NOT EXISTS attempts (
   peeked    INTEGER NOT NULL DEFAULT 0,
   rules     TEXT,                             -- JSON: rule types this miss is evidence against
   jamo      TEXT,                             -- JSON: 'slot:jamo' keys likewise
+  subs      TEXT,                             -- JSON: 'slot:jamo>typed' directions, e.g. 'initial:ㅂ>p'
   kinds     TEXT,                             -- JSON: diagnose kinds seen on this word
   at        INTEGER NOT NULL
 );

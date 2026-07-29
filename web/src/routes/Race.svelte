@@ -40,7 +40,7 @@
    */
   const FLUSH_AT = 20
   const pending = []
-  const fresh = () => ({ rules: new Set(), jamo: new Set(), kinds: new Set() })
+  const fresh = () => ({ rules: new Set(), jamo: new Set(), subs: new Set(), kinds: new Set() })
   let faults = fresh() // what this word's misses have been pinned on, so far
 
   function flush(viaBeacon = false) {
@@ -55,7 +55,7 @@
 
   function record(e) {
     if (!user) return
-    pending.push({ ...e, rules: [...faults.rules], jamo: [...faults.jamo], kinds: [...faults.kinds] })
+    pending.push({ ...e, rules: [...faults.rules], jamo: [...faults.jamo], subs: [...faults.subs], kinds: [...faults.kinds] })
     if (pending.length >= FLUSH_AT) flush()
   }
 
@@ -228,6 +228,7 @@
     const fault = attributeMiss(parsed, marked, d)
     for (const r of fault.rules) faults.rules.add(r)
     for (const j of fault.jamo) faults.jamo.add(j)
+    for (const s of fault.subs) faults.subs.add(s)
     if (d.kind) faults.kinds.add(d.kind)
 
     const wrongCount = marked.marks.filter(m => !m.ok).length

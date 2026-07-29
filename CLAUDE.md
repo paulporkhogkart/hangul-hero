@@ -57,8 +57,12 @@ letter marks one letter). `scoring.mjs` holds every time penalty in one place. `
 word selection a pure function of `(seed, pool, count)` so a daily is byte-identical everywhere.
 
 `profile.mjs` turns misses into a mistake profile. `attributeMiss` pins one wrong answer on a
-rule or a jamo using where the marking diverged and what fate that jamo had, and deliberately
-declines when the evidence is ambiguous (a truncated answer charges nothing). `weaknessProfile`
+rule, a jamo, or a directed substitution (`initial:ㅂ>p`, the b of ㅂ typed as p) using where
+the marking diverged and what fate that jamo had, and deliberately declines when the evidence
+is ambiguous (a truncated answer charges nothing). Ear-only rules (tensing, the held vowels)
+are excluded from the profile on principle: the answer never depends on them, so they cannot
+be missed in a game that asks for the written form, and typing the heard sound is recorded as
+the substitution it demonstrably is. `weaknessProfile`
 ranks weaknesses as misses over exposures (clean attempts are logged for exactly this reason),
 Wilson-bounded and recency-decayed so the profile heals as the player improves. `buildFocusPool`
 assembles a drill from failed words, then words exercising the weak rules, then words carrying

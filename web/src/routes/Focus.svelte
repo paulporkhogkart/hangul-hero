@@ -1,4 +1,5 @@
 <script>
+  import { INITIAL_RR, VOWEL_RR, FINAL_RR } from '@core/rr.mjs'
   import { api, formatTime } from '../lib/api.js'
   import Race from './Race.svelte'
 
@@ -14,10 +15,12 @@
   const SLOT = { initial: 'initial', vowel: 'vowel', final: 'final' }
   const pct = rate => `${Math.round(rate * 100)}%`
 
-  // Rules that change what you hear but not what you type. Shown with a tag, because
-  // "you miss tensing" without it reads as a contradiction: the miss it names is
-  // typing the sound instead of the spelling.
-  const UNWRITTEN = new Set(['tensification', 'vowelheld'])
+  /** 'ㅂ as an initial writes b', for saying which way a letter fails. */
+  const RR = { initial: INITIAL_RR, vowel: VOWEL_RR, final: FINAL_RR }
+  const expectedOf = key => {
+    const [slot, ch] = key.split(':')
+    return RR[slot]?.[ch] ?? ''
+  }
 
   async function load(n) {
     count = n
@@ -84,7 +87,7 @@
           <h2>Rules you miss</h2>
           {#each data.profile.rules as r}
             <p class="row">
-              <span class="what">{r.name}{#if UNWRITTEN.has(r.key)} <span class="slot">heard, never written</span>{/if}</span>
+              <span class="what">{r.name}</span>
               <span class="stat tabular">{pct(r.rate)}</span>
               <span class="n">of {r.exposures} met</span>
             </p>
@@ -98,7 +101,9 @@
             <p class="row">
               <span class="what">{j.key.split(':')[1]} <span class="slot">{SLOT[j.key.split(':')[0]]}</span></span>
               <span class="stat tabular">{pct(j.rate)}</span>
-              <span class="n">of {j.exposures} met</span>
+              <span class="n">
+                of {j.exposures} met{#if j.typedAs}, {j.typedAs.share >= 0.5 ? 'usually' : 'sometimes'} typed {j.typedAs.ch} for {expectedOf(j.key)}{/if}
+              </span>
             </p>
           {/each}
         </div>

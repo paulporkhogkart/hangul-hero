@@ -20,6 +20,11 @@ export function openDb(file) {
 function migrate(db) {
   const columns = new Set(db.prepare(`PRAGMA table_info(runs)`).all().map(c => c.name))
   if (!columns.has('grade')) db.exec(`ALTER TABLE runs ADD COLUMN grade TEXT`)
+
+  // attempts shipped before substitutions were recorded, so a deployed database has
+  // the table without the column and CREATE TABLE IF NOT EXISTS will not add it.
+  const attempts = new Set(db.prepare(`PRAGMA table_info(attempts)`).all().map(c => c.name))
+  if (!attempts.has('subs')) db.exec(`ALTER TABLE attempts ADD COLUMN subs TEXT`)
 }
 
 const now = () => Date.now()
@@ -162,11 +167,11 @@ function wrap(db) {
     sweepClaims: db.prepare(`DELETE FROM runs WHERE user_id IS NULL AND claim_expires <= ?`),
 
     insertAttempt: db.prepare(`
-      INSERT INTO attempts (user_id, word, mode, focus, ms, misses, peeked, rules, jamo, kinds, at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+      INSERT INTO attempts (user_id, word, mode, focus, ms, misses, peeked, rules, jamo, subs, kinds, at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 
     attemptsFor: db.prepare(`
-      SELECT word, ms, misses, peeked, rules, jamo, kinds, at FROM attempts
+      SELECT word, ms, misses, peeked, rules, jamo, subs, kinds, at FROM attempts
       WHERE user_id = ? AND at > ? ORDER BY at DESC LIMIT ?`),
 
     firstAttemptAt: db.prepare(`SELECT MIN(at) AS t FROM attempts WHERE user_id = ?`),
@@ -285,6 +290,7 @@ function wrap(db) {
             e.ms, e.misses ?? 0, e.peeked ? 1 : 0,
             e.rules?.length ? JSON.stringify(e.rules) : null,
             e.jamo?.length ? JSON.stringify(e.jamo) : null,
+            e.subs?.length ? JSON.stringify(e.subs) : null,
             e.kinds?.length ? JSON.stringify(e.kinds) : null,
             t,
           )
