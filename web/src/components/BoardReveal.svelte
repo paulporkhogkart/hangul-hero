@@ -13,9 +13,9 @@
    * rows; POST /api/run's answer arrives a beat later and quietly corrects anything
    * the board learned in between.
    *
-   * The reveal: the board opens pinned to rank 1, holds there long enough to read,
-   * then rides down to where this run belongs and the run slots itself in. A board
-   * can be thousands of rows deep and loading them all to scroll past them would be
+   * The reveal: the board opens already scrolled to the run's own neighbourhood, and
+   * a beat later the run slots itself in, pushing the rows below it down. A board can
+   * be thousands of rows deep and loading them all to scroll past them would be
    * absurd, so anything between the loaded top of the board and the player's own
    * neighbourhood is faked with a single band that says exactly how many runs it
    * stands for. Scrolling into the band pages real rows in to replace it.
@@ -24,7 +24,6 @@
 
   const PAGE = 100      // the server's page size, and the prefetch size
   const LOAD_CAP = 400  // past this the band stays and the board page takes over
-  const HOLD_MS = 420   // the pause at rank 1, so the top is a fact rather than a blur
 
   const myDuration = $derived(run.elapsedMs + run.penaltyMs)
 
@@ -119,12 +118,8 @@
   let wrap = $state(null)
   let youEl = $state(null)
   let gapEl = $state(null)
-  let phase = $state('waiting')  // waiting | reveal | settled
   let slotted = $state(false)
-  let raf = 0
-
-  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
-  const ease = k => (k < 0.5 ? 4 * k * k * k : 1 - (-2 * k + 2) ** 3 / 2)
+  let timer = 0
 
   // Aim a little above centre: the rows below the slot are the runs being beaten,
   // and they are the half of the context worth seeing more of.
@@ -133,52 +128,39 @@
     return Math.max(0, Math.min(t, wrap.scrollHeight - wrap.clientHeight))
   }
 
-  function settle() {
-    slotted = true
-    phase = 'settled'
-    // Once the row has its height the centre moves; land on it, not where it was.
-    requestAnimationFrame(() => { if (wrap && youEl) wrap.scrollTop = targetTop() })
-  }
-
-  // Started exactly once, the first moment there is both a scene and somewhere to put
-  // it. A plain flag rather than phase, because the effect must not depend on the very
-  // state it writes.
+  /**
+   * Open the board at the run's own neighbourhood; a beat later the run slots in.
+   *
+   * There was a scripted ride down from rank 1 here once. It never survived contact
+   * with the real boards: they mostly fit inside the viewport, or the run lands near
+   * enough the top that the clamped scroll distance is zero, so the ride cut straight
+   * to the end anyway, and the bare cut read better. The row arriving is the event;
+   * travel before it was ceremony. The beat before the slot-in is still deliberate,
+   * so the board is a fact on screen before it changes.
+   *
+   * Started exactly once, the first moment there is both a scene and somewhere to
+   * put it, guarded by a plain flag because the effect must not depend on state it
+   * writes.
+   */
   let started = false
   $effect(() => {
     if (started || !loaded || !wrap || !youEl) return
     started = true
-    phase = 'reveal'
-    if (reduced) return settle()
-    wrap.scrollTop = 0
-    const startAt = performance.now()
-    // Duration follows distance, inside limits: a board of six should not crawl and a
-    // board of four hundred should not take all evening. A board with no distance at
-    // all (it fits in the viewport whole) keeps only a short beat before the slot-in;
-    // holding a static list for a second would read as the screen hanging.
-    const travel = targetTop()
-    const hold = travel < 4 ? 240 : HOLD_MS
-    const dur = travel < 4 ? 1 : Math.max(500, Math.min(2100, travel * 2.4))
-    const frame = t => {
-      if (phase !== 'reveal' || !wrap || !youEl) return
-      const k = Math.min(1, Math.max(0, (t - startAt - hold) / dur))
-      // The target is re-read every frame: rows page in and the server's neighbourhood
-      // arrives mid-flight, and the scene must bend toward where the run is now.
-      wrap.scrollTop = targetTop() * ease(k)
-      if (k >= 1) return settle()
-      raf = requestAnimationFrame(frame)
-    }
-    raf = requestAnimationFrame(frame)
+    // Effects run after the DOM update and before the browser paints, so the board
+    // first appears already open at the right place rather than visibly jumping.
+    wrap.scrollTop = targetTop()
+    const put = wrap.scrollTop
+    timer = setTimeout(() => {
+      slotted = true
+      // Once the row has its height the clamp above can shift; land on it again,
+      // unless the player has already taken the scrollbar somewhere else.
+      requestAnimationFrame(() => {
+        if (wrap && youEl && Math.abs(wrap.scrollTop - put) < 2) wrap.scrollTop = targetTop()
+      })
+    }, 240)
   })
 
-  $effect(() => () => cancelAnimationFrame(raf))
-
-  // The player's own hand on the board outranks the cinematography. Any scroll intent
-  // cuts straight to the slotted-in end state.
-  function interrupt() {
-    if (phase !== 'reveal') return
-    cancelAnimationFrame(raf)
-    settle()
-  }
+  $effect(() => () => clearTimeout(timer))
 
   /**
    * Paging. Scrolling to the band (or the bottom) swaps faked distance for real rows,
@@ -210,18 +192,12 @@
   }
 
   function onScroll() {
-    if (phase !== 'settled' || !wrap) return
+    if (!slotted || !wrap) return
     const bottomEdge = wrap.scrollTop + wrap.clientHeight
     const threshold = gapEl ? gapEl.offsetTop : wrap.scrollHeight
     if (bottomEdge > threshold - 220) loadMore()
   }
-
-  function onKeydown() {
-    interrupt()
-  }
 </script>
-
-<svelte:window onkeydown={onKeydown} />
 
 {#if !loaded}
   <p class="dim finding">finding the board</p>
@@ -246,9 +222,6 @@
     class="boardwrap"
     bind:this={wrap}
     onscroll={onScroll}
-    onwheel={interrupt}
-    ontouchstart={interrupt}
-    onpointerdown={interrupt}
     role="region"
     aria-label="leaderboard"
     tabindex="0"
