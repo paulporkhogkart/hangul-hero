@@ -262,6 +262,11 @@
     .me .name { display: none; }
   }
   @media (max-width: 520px) {
-    nav { display: none; }
+    /* The links wrap onto their own line under the brand rather than vanishing. On a
+       phone this bar is the only route to the board and the learn page; hiding it made
+       most of the site unreachable there. */
+    .row { flex-wrap: wrap; height: auto; padding-block: 8px 0; row-gap: 0; }
+    nav { order: 10; flex-basis: 100%; gap: 18px; }
+    nav a { padding-block: 6px 10px; }
   }
 </style>
