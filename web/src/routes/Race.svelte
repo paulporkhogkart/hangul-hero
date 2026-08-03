@@ -4,7 +4,7 @@
   import { attributeMiss } from '@core/profile.mjs'
   import { missCost, REVEAL_PENALTY_MS } from '@core/scoring.mjs'
   import { play, speak, preloadSpeech, unlock } from '../lib/audio.svelte.js'
-  import { api, formatTime, prefetchBoard } from '../lib/api.js'
+  import { api, formatTime, prefetchBoard, isMobile } from '../lib/api.js'
   import WordAnalysis from '../components/WordAnalysis.svelte'
 
   // `words` is null while the run is still on the wire: App routes here on the click
@@ -148,6 +148,13 @@
   })
 
   /**
+   * Touch screens get a different start gate and an early input, decided once here.
+   * Everything else about the race is deliberately identical: the flow that differs is
+   * only the part a device without keys cannot perform.
+   */
+  const touch = isMobile()
+
+  /**
    * The input must never lose focus. Racing with a mouse is not a thing.
    *
    * The exception is selecting text, and getting this right took three attempts because
@@ -169,7 +176,11 @@
   }
 
   function refocus() {
-    if (status === 'done' || pointerHeld || hasSelection()) return
+    // Never before the start. On a touch screen the input already exists while the
+    // screen is waiting, and focusing it here, outside any gesture, would make the
+    // starting tap's own focus() a no-op on an already-focused element, which raises
+    // no keyboard. On desktop the input does not exist yet, so this changes nothing.
+    if (status === 'ready' || status === 'done' || pointerHeld || hasSelection()) return
     input?.focus({ preventScroll: true })
   }
 
@@ -201,6 +212,11 @@
     // ever starts with a word on screen, so no time is lost to the network.
     if (!words) { wantsStart = true; return }
     play('start')
+    // A touch keyboard raised during the wait can have already put letters into the
+    // early input (Android reports them as Unidentified, which the swallower above
+    // cannot catch), and they must not leak into the first word. Desktop cannot get
+    // here with anything typed, so this is a no-op there.
+    typed = ''
     status = 'racing'
     startedAt = performance.now()
     wordStartedAt = startedAt
@@ -335,6 +351,30 @@
       begin()
     }
   }
+
+  /**
+   * A device without keys starts on a tap instead, and the tap has to do two jobs at
+   * once: begin the run AND grant the input focus, because mobile browsers only raise
+   * the virtual keyboard for a focus taken inside a user gesture. That is the whole
+   * reason the input is rendered (hidden) before the run on touch screens: an element
+   * that does not exist yet cannot take focus inside the gesture that needed it.
+   *
+   * Filtered by the pointer that actually fired rather than by device sniffing, so a
+   * mouse click on the waiting screen still starts nothing and desktop keeps its
+   * keyboard-only gate. Pen counts as touch: an iPad tapped with a Pencil has no keys
+   * either.
+   */
+  function onStageTap(e) {
+    if (status !== 'ready') return
+    if (e.pointerType !== 'touch' && e.pointerType !== 'pen') return
+    begin()
+    if (!input) return
+    // Focusing an already-focused input is a no-op that raises nothing, so a keyboard
+    // the player dismissed while waiting would stay down; cycling inside the gesture
+    // brings it back. First tap, nothing focused, plain focus: same result.
+    if (document.activeElement === input) input.blur()
+    input.focus({ preventScroll: true })
+  }
 </script>
 
 <svelte:window onkeydown={onWindowKeydown} />
@@ -351,7 +391,7 @@
   <!-- Before a run there is no annotation headroom and no explanation, so the three row
        layout that keeps the word still would strand this message high on the screen.
        Nothing needs anchoring yet, so centre it in the whole stage. -->
-  <main class="stage shell" class:waiting={status === 'ready'}>
+  <main class="stage shell" class:waiting={status === 'ready'} onpointerup={onStageTap}>
     <div class="pad"></div>
 
     <div class="core">
@@ -359,7 +399,7 @@
         <!-- Same element either way, so the swap from fetching to ready is a text
              change in place rather than a relayout. -->
         <p class="ready" class:loading={!words}>
-          {words ? 'Press any key to start' : wantsStart ? 'starting...' : 'loading words'}
+          {words ? (touch ? 'Tap to start' : 'Press any key to start') : wantsStart ? 'starting...' : 'loading words'}
         </p>
       {:else if word}
         <div class="wordblock">
@@ -367,8 +407,15 @@
           <div class="gloss">{word.meaning}</div>
           {#if word.definition}<div class="context">{word.definition}</div>{/if}
         </div>
+      {/if}
 
-        <div class="field" class:bad={flash === 'wrong'}>
+      <!-- One if-block on purpose, and its condition stays true straight through the
+           ready-to-racing flip on a touch screen, so the input is the SAME element on
+           both sides of it. Rebuilding the node there would drop the focus the starting
+           tap granted and take the virtual keyboard down with it. On desktop the early
+           half is never true, so the input mounts exactly where it always did. -->
+      {#if (status !== 'ready' && word) || (status === 'ready' && touch)}
+        <div class="field" class:pre={status === 'ready'} class:bad={flash === 'wrong'}>
           {#if split}
             <!-- A mirror of what was typed, one span per character, because an input
                  cannot colour part of its own value. -->
@@ -452,6 +499,9 @@
     justify-items: center;
     text-align: center;
     min-height: 0;
+    /* Panning and pinching stay, only double-tap zoom goes: an impatient second tap
+       on the start gate must not zoom the page instead of being ignored. */
+    touch-action: manipulation;
   }
   .stage.waiting { grid-template-rows: 1fr auto 1fr; }
   .core { display: grid; justify-items: center; }
@@ -468,6 +518,23 @@
 
   /* The mirror has to match the input exactly or the colouring drifts off the letters. */
   .field { position: relative; margin-top: 40px; width: min(440px, 100%); }
+
+  /* The field before the run has started, which only touch screens render: present so
+     the starting tap has something real to focus, invisible because the waiting screen
+     is a sentence and nothing else. Fixed takes it out of flow without making it
+     unfocusable the way display none or visibility hidden would. The input inside
+     keeps its full font size, so iOS has no small-text excuse to zoom on focus. */
+  .field.pre {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 24px;
+    height: 24px;
+    margin: 0;
+    opacity: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
   .field input,
   .field .mirror {
     width: 100%;
@@ -576,5 +643,12 @@
     .explain { margin-top: 12px; gap: 6px; grid-template-columns: 1fr; }
     .explain .row { grid-template-columns: 1fr; gap: 1px; font-size: 11.5px; }
     .explain .what { text-align: left; }
+  }
+
+  /* Keyed to the pointer rather than the width: a narrow desktop window still has a
+     tab key, and a wide tablet still does not. The button itself is the tap target
+     either way; only the key name it advertises is a lie under a thumb. */
+  @media (pointer: coarse) {
+    .peek-btn kbd { display: none; }
   }
 </style>
