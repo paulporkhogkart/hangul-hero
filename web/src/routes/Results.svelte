@@ -246,4 +246,10 @@
   @media (max-width: 640px) {
     .results { padding: 30px 16px 70px; gap: 24px; }
   }
+
+  /* The button is the tap target; the key name on it only means something where an
+     enter key exists. */
+  @media (pointer: coarse) {
+    .actions .primary kbd { display: none; }
+  }
 </style>

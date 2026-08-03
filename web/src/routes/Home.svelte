@@ -174,4 +174,10 @@
     .mode { padding: 14px; }
     .mode .n { font-size: 21px; }
   }
+
+  /* Key names mean nothing under a thumb. The race screen itself teaches the reveal
+     through its footer button, cost included, so nothing is lost by dropping this. */
+  @media (pointer: coarse) {
+    .keys { display: none; }
+  }
 </style>

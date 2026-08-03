@@ -38,6 +38,9 @@ html, body {
   min-height: var(--vh, 100dvh);
   display: flex;
   flex-direction: column;
+  /* Zero everywhere except an iPhone running full screen, where it keeps the race
+     footer's buttons out from under the home indicator. */
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 /* Everything on the page is readable and copyable. The only thing that should not be
@@ -46,6 +49,11 @@ body { -webkit-user-select: text; user-select: text; }
 button, kbd, .label { -webkit-user-select: none; user-select: none; }
 
 button, input, select { font: inherit; color: inherit; }
+
+/* Touch niceties that cost desktop nothing: no grey flash on tap, and no double-tap
+   zoom lying in wait on controls that are made to be pressed twice in a row. */
+html { -webkit-tap-highlight-color: transparent; }
+button, a { touch-action: manipulation; }
 
 button {
   appearance: none;
