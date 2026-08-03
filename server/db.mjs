@@ -108,6 +108,25 @@ function wrap(db) {
       ORDER BY r.duration_ms ASC, r.finished_at ASC
       LIMIT ? OFFSET ?`),
 
+    // How many rows a board has in total. A page of rows cannot say how much it left
+    // out, and the finish screen needs exactly that number: it fakes the middle of a
+    // long board and owes the player an honest count of what it skipped.
+    boardCountAll: db.prepare(`
+      SELECT COUNT(*) AS n FROM runs
+      WHERE mode = ? AND daily_date IS NULL AND user_id IS NOT NULL`),
+
+    boardCountMine: db.prepare(`
+      SELECT COUNT(*) AS n FROM runs
+      WHERE mode = ? AND daily_date IS NULL AND user_id = ?`),
+
+    boardCountBest: db.prepare(`
+      SELECT COUNT(DISTINCT user_id) AS n FROM runs
+      WHERE mode = ? AND daily_date IS NULL AND user_id IS NOT NULL`),
+
+    dailyBoardCount: db.prepare(`
+      SELECT COUNT(*) AS n FROM runs
+      WHERE daily_date = ? AND mode = ? AND user_id IS NOT NULL`),
+
     // Where a given time would land, without needing the whole board. Ranked against the
     // same level it was played at, or it would be comparing different contests.
     rankOf: db.prepare(`
@@ -253,6 +272,13 @@ function wrap(db) {
       return q.board.all(mode, limit, offset)
     },
     dailyBoard: (date, mode, limit = 100, offset = 0) => q.dailyBoard.all(date, mode, limit, offset),
+
+    boardCount({ mode, view = 'all', userId = null }) {
+      if (view === 'mine') return userId ? q.boardCountMine.get(mode, userId).n : 0
+      if (view === 'best') return q.boardCountBest.get(mode).n
+      return q.boardCountAll.get(mode).n
+    },
+    dailyBoardCount: (date, mode) => q.dailyBoardCount.get(date, mode).n,
 
     rankOf: (mode, durationMs) => q.rankOf.get(mode, durationMs).n + 1,
     nextAbove: (mode, durationMs) => q.nextAbove.get(mode, durationMs) ?? null,

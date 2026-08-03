@@ -1,7 +1,8 @@
 <script>
   import { plural } from '@core/scoring.mjs'
-  import { formatTime, formatDelta, prefetchRun } from '../lib/api.js'
+  import { formatTime, prefetchRun } from '../lib/api.js'
   import Peek from '../components/Peek.svelte'
+  import BoardReveal from '../components/BoardReveal.svelte'
 
   let { outcome, user, loginHref, onAgain } = $props()
 
@@ -109,55 +110,18 @@
   </div>
 
   <div class="standing">
-    {#if outcome.pending}
-      <p class="dim">saving</p>
-    {:else if outcome.error}
+    {#if outcome.error}
       <p class="err">{outcome.error}</p>
-    {:else if st}
-      <div class="rankline">
-        <span class="rank tabular">#{st.rank}</span>
-        {#if st.gapToNext != null}
-          <span class="gap">{formatDelta(st.gapToNext)}s off {st.nextName}</span>
-        {:else}
-          <span class="gap top">fastest time on the board</span>
-        {/if}
-      </div>
+    {/if}
 
-      <!-- A rank with nobody attached to it says nothing. These are the runs immediately
-           faster and immediately slower, so the number has faces either side of it.
-           Shown even when there is nobody else: a board of one still says where you
-           stand, and an empty space where a board should be reads as a bug. -->
-      {#if st.nearby}
-        <ol class="near" style="--start: {Math.max(1, st.rank - st.nearby.above.length)}">
-          {#each st.nearby.above as r}
-            <li>
-              {#if r.avatar_url}<img src={r.avatar_url} alt="" width="18" height="18" loading="lazy">{/if}
-              <span class="who">{r.display_name}</span>
-              <span class="t tabular">{formatTime(r.duration_ms)}</span>
-            </li>
-          {/each}
-          <li class="you">
-            <span class="dot" aria-hidden="true"></span>
-            <span class="who">{user ? user.name : 'this run'}</span>
-            <span class="t tabular">{formatTime(run.elapsedMs + run.penaltyMs)}</span>
-          </li>
-          {#each st.nearby.below as r}
-            <li>
-              {#if r.avatar_url}<img src={r.avatar_url} alt="" width="18" height="18" loading="lazy">{/if}
-              <span class="who">{r.display_name}</span>
-              <span class="t tabular">{formatTime(r.duration_ms)}</span>
-            </li>
-          {/each}
-        </ol>
-        <div class="boardnote">
-          {#if !st.nearby.above.length && !st.nearby.below.length}
-            <span class="alone">
-              {run.daily ? 'Nobody else has finished today\'s daily yet.' : 'Nobody else has a time on this board yet.'}
-            </span>
-          {/if}
-          <a class="fullboard" href={boardHref}>see the whole board</a>
-        </div>
-      {/if}
+    <!-- The board itself, prefetched during the run, so it is on screen before the
+         server has confirmed anything. It opens at rank 1 and rides down to slot this
+         run in; the server's answer corrects the details when it lands. A rank with
+         nobody attached to it says nothing, which is why the whole neighbourhood is
+         here rather than a bare number. -->
+    <BoardReveal {run} standings={st} pending={outcome.pending} {user} {boardHref} />
+
+    {#if st}
       {#if st.beatPersonalBest}
         <p class="pb best">A new personal best.</p>
       {:else if st.personalBest != null}
@@ -236,10 +200,6 @@
   .meta .pen { color: var(--bad); opacity: .8; }
 
   .standing { display: grid; gap: 8px; }
-  .rankline { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-  .rank { font-size: 22px; color: var(--accent); }
-  .gap { font-size: 13px; color: var(--dim); }
-  .gap.top { color: var(--good); }
   .pb { margin: 0; font-size: 13px; color: var(--dim); }
   .pb.best { color: var(--good); }
   .claim {
@@ -252,48 +212,6 @@
     max-width: 56ch;
   }
   .err { color: #e8b4ac; font-size: 13px; margin: 0; }
-
-  .near {
-    list-style: none;
-    margin: 4px 0 0;
-    padding: 0;
-    display: grid;
-    max-width: 380px;
-    counter-reset: place calc(var(--start, 1) - 1);
-  }
-  .near li {
-    display: grid;
-    grid-template-columns: 2.6em 18px minmax(0, 1fr) 6.4em;
-    align-items: center;
-    gap: 12px;
-    padding: 7px 8px;
-    font-size: 12.5px;
-    border-bottom: 1px solid #1c1d21;
-  }
-  .near li::before {
-    counter-increment: place;
-    content: counter(place);
-    color: var(--dimmer);
-    font-size: 11px;
-    font-variant-numeric: tabular-nums;
-  }
-  .near img { border-radius: 50%; display: block; }
-  .near .who { color: #8b8983; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .near .t { text-align: right; color: var(--dim); }
-  .near .you { background: var(--bg-lift); }
-  .near .you .who { color: var(--ink); }
-  .near .you .t { color: var(--accent); }
-  .near .you .dot { width: 6px; height: 6px; background: var(--accent); justify-self: center; }
-  .boardnote {
-    display: flex;
-    align-items: baseline;
-    gap: 14px;
-    flex-wrap: wrap;
-    margin-top: 8px;
-    font-size: 12px;
-  }
-  .boardnote .alone { color: var(--dim); }
-  .fullboard { font-size: 12px; }
 
   .grid { display: flex; flex-wrap: wrap; gap: 3px; max-width: 420px; }
   .sq { width: 13px; height: 13px; }

@@ -83,7 +83,11 @@ row onward; `run_words` from runs finished before that serve as coarse pre-featu
 nothing is counted twice. `GET /api/focus` builds the personal drill from the profile.
 
 **`web/`** is the Vite root. Svelte 5 runes, a hand-rolled router in `lib/router.svelte.js`, no
-component library.
+component library. The finish screen's leaderboard is prefetched while the final word is being
+typed and rendered with a locally computed rank before `POST /api/run` answers; the server's
+reply reconciles it. `components/BoardReveal.svelte` owns that reveal, and the list-building
+(gap band arithmetic, dedup against the server's nearby rows) is pure and tested in
+`lib/scene.mjs`.
 
 **Word data** is 6,153 entries in `data/words.json`, each carrying spelling, published
 pronunciation, canonical `rr`, an `accept` list, gloss, grade and part of speech. Anything the

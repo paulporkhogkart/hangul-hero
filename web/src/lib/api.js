@@ -29,8 +29,10 @@ export const api = {
   profile: () => req('/api/profile'),
   focus: count => req(`/api/focus?count=${count}`),
 
-  board: (mode, view = 'all') => req(`/api/board?mode=${mode}&view=${view}`),
-  dailyBoard: (mode, date) => req(`/api/board/daily?mode=${mode}&date=${date}`),
+  board: (mode, view = 'all', { limit = 100, offset = 0 } = {}) =>
+    req(`/api/board?mode=${mode}&view=${view}&limit=${limit}&offset=${offset}`),
+  dailyBoard: (mode, date, { limit = 100, offset = 0 } = {}) =>
+    req(`/api/board/daily?mode=${mode}&date=${date}&limit=${limit}&offset=${offset}`),
 }
 
 /**
@@ -65,6 +67,19 @@ export const prefetchRun = mode => prefill(`run:${mode}`, () => api.newRun(mode)
 export const prefetchDaily = (mode, date) => prefill(`daily:${mode}:${date}`, () => api.daily(mode, date))
 export const takeRun = mode => take(`run:${mode}`)
 export const takeDaily = (mode, date) => take(`daily:${mode}:${date}`)
+
+/**
+ * The board a finishing run is about to land on, fetched while the last word is still
+ * being typed. The finish screen used to sit on "saving" for a whole round trip to the
+ * Pi before it could show anyone; with the board already in hand it renders the moment
+ * the run ends, and the server's answer only has to confirm the details.
+ *
+ * dailyDate is the run's daily date or null, which is exactly the shape Race holds.
+ */
+const boardKey = (mode, dailyDate) => (dailyDate ? `board:daily:${mode}:${dailyDate}` : `board:${mode}`)
+export const prefetchBoard = (mode, dailyDate = null) =>
+  prefill(boardKey(mode, dailyDate), () => (dailyDate ? api.dailyBoard(mode, dailyDate) : api.board(mode, 'all')))
+export const takeBoard = (mode, dailyDate = null) => take(boardKey(mode, dailyDate))
 
 /** The player's own calendar date, so the daily rolls over at their local midnight. */
 export function localDate(at = new Date()) {

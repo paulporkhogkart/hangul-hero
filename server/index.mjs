@@ -284,6 +284,9 @@ const routes = {
     const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0)
     json(res, 200, {
       mode, view, offset,
+      // The total the page came out of, so a client can page and can say how many rows
+      // it is not showing rather than pretending the page is the board.
+      total: db.boardCount({ mode, view, userId: user?.id ?? null }),
       rows: db.board({ mode, view, userId: user?.id ?? null, limit, offset }),
     })
   },
@@ -292,7 +295,13 @@ const routes = {
     const mode = Number(url.searchParams.get('mode') ?? 25)
     const date = validDailyDate(url.searchParams.get('date'))
     if (!MODES.includes(mode) || !date) return fail(res, 400, 'unknown mode or date')
-    json(res, 200, { mode, date, rows: db.dailyBoard(date, mode) })
+    const limit = Math.min(100, Math.max(1, Number(url.searchParams.get('limit')) || 100))
+    const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0)
+    json(res, 200, {
+      mode, date, offset,
+      total: db.dailyBoardCount(date, mode),
+      rows: db.dailyBoard(date, mode, limit, offset),
+    })
   },
 
   'GET /api/run': (req, res, url) => {
@@ -444,6 +453,12 @@ function standings(run, user, id = -1) {
 
   return {
     rank,
+    // Which board the numbers above were measured against. Usually the one the client
+    // expects, but a daily replay is demoted to free play at submit time, and a client
+    // that has already drawn the daily board needs to be told it is looking at the
+    // wrong one rather than left to mix the two.
+    board: daily ? 'daily' : 'free',
+    total: daily ? db.dailyBoardCount(daily, run.mode) : db.boardCount({ mode: run.mode }),
     gapToNext: above ? run.durationMs - above.duration_ms : null,
     nextName: above?.display_name ?? null,
     personalBest: best,

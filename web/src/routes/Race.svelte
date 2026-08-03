@@ -4,7 +4,7 @@
   import { attributeMiss } from '@core/profile.mjs'
   import { missCost, REVEAL_PENALTY_MS } from '@core/scoring.mjs'
   import { play, speak, preloadSpeech, unlock } from '../lib/audio.svelte.js'
-  import { api, formatTime } from '../lib/api.js'
+  import { api, formatTime, prefetchBoard } from '../lib/api.js'
   import WordAnalysis from '../components/WordAnalysis.svelte'
 
   // `words` is null while the run is still on the wire: App routes here on the click
@@ -116,6 +116,18 @@
   })
   const elapsed = $derived(status === 'ready' ? 0 : Math.max(0, now - startedAt))
   const shown = $derived(elapsed + penaltyMs)
+
+  /**
+   * The board this run is about to land on, fetched while the last word is still being
+   * typed. Typing a word takes seconds and the fetch takes a fraction of one, so the
+   * finish screen gets its leaderboard in the same frame the run ends instead of after
+   * a round trip. GET /api/board writes nothing, so an abandoned final word costs
+   * nobody anything. Focus runs are personal and unranked and skip it entirely.
+   */
+  $effect(() => {
+    if (focus || status !== 'racing' || !words) return
+    if (index === words.length - 1) prefetchBoard(mode, daily)
+  })
 
   const reveal = $derived(
     hidden ? 'none'

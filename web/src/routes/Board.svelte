@@ -19,7 +19,9 @@
   let mode = $state(MODES.includes(Number(q.get('mode'))) ? Number(q.get('mode')) : 10)
   let view = $state(['all', 'best', 'mine'].includes(q.get('view')) ? q.get('view') : 'all')
   let rows = $state([])
+  let total = $state(null)
   let loading = $state(true)
+  let loadingMore = $state(false)
   let error = $state(null)
 
   const today = localDate()
@@ -30,17 +32,37 @@
     { id: 'mine', label: 'just me' },
   ]
 
+  // Ticks up whenever the controls change, so a slow page of one board cannot land on
+  // top of another board the user has already switched to.
+  let epoch = 0
+
   $effect(() => {
     const k = kind, m = mode, v = view
+    const e = ++epoch
     loading = true
     error = null
     void (async () => {
       try {
         const res = k === 'daily' ? await api.dailyBoard(25, today) : await api.board(m, v)
+        if (e !== epoch) return
         rows = res.rows
-      } catch (e) { error = e.message } finally { loading = false }
+        total = res.total ?? null
+      } catch (err) { if (e === epoch) error = err.message } finally { if (e === epoch) loading = false }
     })()
   })
+
+  async function more() {
+    const e = epoch
+    loadingMore = true
+    try {
+      const res = kind === 'daily'
+        ? await api.dailyBoard(25, today, { offset: rows.length })
+        : await api.board(mode, view, { offset: rows.length })
+      if (e !== epoch) return
+      rows = [...rows, ...res.rows]
+      total = res.total ?? total
+    } catch { /* the button stays and a second press retries */ } finally { loadingMore = false }
+  }
 
   const when = ts => new Date(ts).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
 </script>
@@ -97,6 +119,11 @@
         </li>
       {/each}
     </ol>
+    {#if total != null && rows.length < total}
+      <button class="more" onclick={more} disabled={loadingMore}>
+        {loadingMore ? 'loading' : `show more (${(total - rows.length).toLocaleString()} left)`}
+      </button>
+    {/if}
   {/if}
 </div>
 
@@ -134,6 +161,8 @@
   .detail .miss { color: #8d5f57; }
   .date { font-size: 11px; color: var(--dimmer); }
   .t { text-align: right; color: var(--accent); padding-left: 6px; }
+
+  .more { justify-self: start; margin-top: 4px; font-size: 12px; color: var(--dim); }
 
   .err { color: #e8b4ac; font-size: 13px; }
 
