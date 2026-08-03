@@ -432,7 +432,11 @@ function standings(run, user, id = -1) {
     ? db.dailyRankOf(daily, run.mode, run.durationMs)
     : db.rankOf(run.mode, run.durationMs)
   const above = daily ? null : db.nextAbove(run.mode, run.durationMs)
-  const best = user && !daily ? db.personalBest(user.id, run.mode) : null
+  // The run is already in the table by now, so the best has to be measured against
+  // every run EXCEPT this one or "did I beat my best" would always compare the run
+  // with itself and answer no. A first run on a mode has no history to lose to, and
+  // that is a personal best too: it is the time every later run will be chasing.
+  const best = user && !daily ? db.personalBest(user.id, run.mode, id) : null
   const nearby = db.around({
     mode: run.mode, dailyDate: daily,
     durationMs: run.durationMs, excludeId: id, span: 4,
@@ -443,7 +447,7 @@ function standings(run, user, id = -1) {
     gapToNext: above ? run.durationMs - above.duration_ms : null,
     nextName: above?.display_name ?? null,
     personalBest: best,
-    beatPersonalBest: best !== null && run.durationMs < best,
+    beatPersonalBest: Boolean(user) && !daily && (best === null || run.durationMs < best),
     // The rank alone says nothing about how close anyone was. These are the runs
     // immediately faster and immediately slower, so the number has people attached.
     nearby,

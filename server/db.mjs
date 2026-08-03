@@ -119,9 +119,12 @@ function wrap(db) {
       WHERE r.mode = ? AND r.daily_date IS NULL AND r.duration_ms < ?
              ORDER BY r.duration_ms DESC LIMIT 1`),
 
+    // The caller excludes the run it is asking on behalf of: standings are computed
+    // after the run is recorded, and a "best" that included the run itself could never
+    // be beaten by it.
     personalBest: db.prepare(`
       SELECT MIN(duration_ms) AS best FROM runs
-      WHERE user_id = ? AND mode = ? AND daily_date IS NULL`),
+      WHERE user_id = ? AND mode = ? AND daily_date IS NULL AND id <> ?`),
 
     dailyPlayed: db.prepare(`
       SELECT 1 FROM runs WHERE user_id = ? AND daily_date = ? AND mode = ? LIMIT 1`),
@@ -253,7 +256,7 @@ function wrap(db) {
 
     rankOf: (mode, durationMs) => q.rankOf.get(mode, durationMs).n + 1,
     nextAbove: (mode, durationMs) => q.nextAbove.get(mode, durationMs) ?? null,
-    personalBest: (userId, mode) => q.personalBest.get(userId, mode)?.best ?? null,
+    personalBest: (userId, mode, excludeId = -1) => q.personalBest.get(userId, mode, excludeId)?.best ?? null,
     dailyPlayed: (userId, date, mode) => Boolean(q.dailyPlayed.get(userId, date, mode)),
     dailyRankOf: (date, mode, durationMs) => q.dailyRankOf.get(date, mode, durationMs).n + 1,
 
