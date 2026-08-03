@@ -33,6 +33,39 @@ export const api = {
   dailyBoard: (mode, date) => req(`/api/board/daily?mode=${mode}&date=${date}`),
 }
 
+/**
+ * Runs fetched before anyone asked to race them, so the click that starts a run gets
+ * its words in the same frame instead of after a round trip to the Pi. Hovering a mode
+ * button and sitting on the results screen are both declarations of intent, and
+ * GET /api/run/new writes nothing, so a prefetched run that goes unused costs nobody
+ * anything.
+ *
+ * The map holds the in-flight promise rather than the response, so a click landing
+ * mid-fetch simply awaits the request already running. Entries are taken exactly once:
+ * a run handed out twice would replay identical words, and free-play words must stay
+ * unpredictable. A failed prefetch removes itself so the real click retries from
+ * scratch instead of awaiting a dead promise.
+ */
+const prefetched = new Map()
+
+function prefill(key, make) {
+  if (prefetched.has(key)) return
+  const p = make()
+  p.catch(() => prefetched.delete(key))
+  prefetched.set(key, p)
+}
+
+const take = key => {
+  const p = prefetched.get(key) ?? null
+  prefetched.delete(key)
+  return p
+}
+
+export const prefetchRun = mode => prefill(`run:${mode}`, () => api.newRun(mode))
+export const prefetchDaily = (mode, date) => prefill(`daily:${mode}:${date}`, () => api.daily(mode, date))
+export const takeRun = mode => take(`run:${mode}`)
+export const takeDaily = (mode, date) => take(`daily:${mode}:${date}`)
+
 /** The player's own calendar date, so the daily rolls over at their local midnight. */
 export function localDate(at = new Date()) {
   const p = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(at)

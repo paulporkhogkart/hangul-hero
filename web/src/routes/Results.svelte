@@ -1,6 +1,6 @@
 <script>
   import { plural } from '@core/scoring.mjs'
-  import { formatTime, formatDelta } from '../lib/api.js'
+  import { formatTime, formatDelta, prefetchRun } from '../lib/api.js'
   import Peek from '../components/Peek.svelte'
 
   let { outcome, user, loginHref, onAgain } = $props()
@@ -47,6 +47,11 @@
 
   $effect(() => { if (armed) againBtn?.focus({ preventScroll: true }) })
 
+  // Reading this screen is dead time on the network, so the next run for this mode is
+  // fetched now and Again starts a race in the frame it is pressed. Correct for a
+  // daily too: its Again deliberately starts a free-play run of the same size.
+  $effect(() => { prefetchRun(run.mode) })
+
   function onKeydown(e) {
     if (!armed || e.key !== 'Enter') return
     if (e.target?.tagName === 'BUTTON' || e.target?.tagName === 'A') return
@@ -59,13 +64,21 @@
     for (let i = 0; i < squares.length; i += 13) {
       rows.push(squares.slice(i, i + 13).map(s => EMOJI[s]).join(''))
     }
-    const title = run.daily ? `Hangul Hero · Daily ${run.daily}` : `Hangul Hero · ${run.mode} words`
+    // Standings can still be in flight (or have failed) when share is pressed, so
+    // every claim sourced from them degrades to silence rather than to a lie.
+    const title = [run.daily ? `Hangul Hero · Daily ${run.daily}` : `Hangul Hero · ${run.mode} words`]
+    if (st?.beatPersonalBest) title.push('new PB')
+    // Rank 1 on a mode board means nobody anywhere has gone faster: a world record.
+    // The daily board resets each midnight and keeps filling all day, so calling its
+    // lead a record would oversell it; there the bare rank already tells the story.
+    if (!run.daily && st?.rank === 1) title.push('new WR')
     const bits = [
       `${formatTime(run.elapsedMs + run.penaltyMs)}s`,
       plural(run.misses, 'mistake'),
       plural(run.peeks, 'peek'),
     ]
-    return `${title}\n${bits.join('  ·  ')}\n\n${rows.join('\n')}\n\n${location.origin}`
+    if (st?.rank != null) bits.unshift(`rank ${st.rank}`)
+    return `${title.join(' · ')}\n${bits.join('  ·  ')}\n\n${rows.join('\n')}\n\n${location.origin}`
   }
 
   async function share() {

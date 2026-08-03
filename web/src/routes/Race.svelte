@@ -3,13 +3,17 @@
   import { isCorrect, diagnose, markAnswer, locateIndex } from '@core/answer.mjs'
   import { attributeMiss } from '@core/profile.mjs'
   import { missCost, REVEAL_PENALTY_MS } from '@core/scoring.mjs'
-  import { play, speak, unlock } from '../lib/audio.svelte.js'
+  import { play, speak, preloadSpeech, unlock } from '../lib/audio.svelte.js'
   import { api, formatTime } from '../lib/api.js'
   import WordAnalysis from '../components/WordAnalysis.svelte'
 
+  // `words` is null while the run is still on the wire: App routes here on the click
+  // and fills the words in when they land, so the screen must be able to stand up
+  // without them. Everything below that touches a word is guarded for it.
   let { words, mode, seed, daily = null, focus = false, user = null, onFinish } = $props()
 
   let index = $state(0)
+  let wantsStart = $state(false)     // a key arrived before the words did
   let typed = $state('')
   let status = $state('ready')       // ready | racing | done
   let startedAt = 0
@@ -93,8 +97,23 @@
    */
   const REVEAL_PENALTY = REVEAL_PENALTY_MS
 
-  const word = $derived(words[index])
+  const word = $derived(words?.[index])
   const parsed = $derived(word ? breakdown(word.word, word.pron) : null)
+
+  /**
+   * The clip for a word is fetched and decoded while the word is still being typed,
+   * so the voice starts the instant the answer is accepted instead of a server round
+   * trip later. The next word rides along so a player faster than the network never
+   * catches up with it. `status` is a dependency on purpose: begin() is what creates
+   * the audio context, and this must run again once it exists or the first word would
+   * be the one word that still pays the round trip.
+   */
+  $effect(() => {
+    void status
+    if (!words) return
+    preloadSpeech(words[index]?.word)
+    preloadSpeech(words[index + 1]?.word)
+  })
   const elapsed = $derived(status === 'ready' ? 0 : Math.max(0, now - startedAt))
   const shown = $derived(elapsed + penaltyMs)
 
@@ -165,12 +184,20 @@
   function begin() {
     if (status !== 'ready') return
     unlock()
+    // Pressed before the words landed. Swallowing the key would read as a dead
+    // keyboard, so hold the intent and start the moment they arrive; the clock only
+    // ever starts with a word on screen, so no time is lost to the network.
+    if (!words) { wantsStart = true; return }
     play('start')
     status = 'racing'
     startedAt = performance.now()
     wordStartedAt = startedAt
     now = startedAt
   }
+
+  $effect(() => {
+    if (words && wantsStart) { wantsStart = false; begin() }
+  })
 
   function nextWord() {
     typed = ''
@@ -303,7 +330,7 @@
 <div class="race" class:flash-ok={flash === 'correct'} class:flash-bad={flash === 'wrong'}>
   <header class="bar shell">
     <span class="label">{daily ? 'Daily' : `${mode} words`}</span>
-    <span class="progress tabular">{index + (status === 'done' ? 0 : 1)} / {words.length}</span>
+    <span class="progress tabular">{index + (status === 'done' ? 0 : 1)} / {words ? words.length : mode}</span>
     <span class="spacer"></span>
     {#if penaltyMs > 0}<span class="pen tabular">+{(penaltyMs / 1000).toFixed(0)}s</span>{/if}
     <span class="clock tabular">{formatTime(shown)}</span>
@@ -317,7 +344,11 @@
 
     <div class="core">
       {#if status === 'ready'}
-        <p class="ready">Press any key to start</p>
+        <!-- Same element either way, so the swap from fetching to ready is a text
+             change in place rather than a relayout. -->
+        <p class="ready" class:loading={!words}>
+          {words ? 'Press any key to start' : wantsStart ? 'starting...' : 'loading words'}
+        </p>
       {:else if word}
         <div class="wordblock">
           <WordAnalysis syllables={parsed.syllables} {reveal} {errorAt} />
@@ -413,6 +444,11 @@
   .stage.waiting { grid-template-rows: 1fr auto 1fr; }
   .core { display: grid; justify-items: center; }
   .ready { color: var(--dim); font-size: 14px; letter-spacing: .04em; }
+  /* Held back for a beat: on a fast connection the words arrive inside this delay, so
+     the message only ever shows when the network is genuinely making someone wait.
+     Without the delay it flashed for a single frame on every start and read as flicker. */
+  .ready.loading { color: var(--dimmer); animation: appear .2s ease .3s backwards; }
+  @keyframes appear { from { opacity: 0; } to { opacity: 1; } }
 
   .wordblock { width: 100%; display: grid; justify-items: center; }
   .gloss { font-size: 13px; color: var(--dim); margin-top: 8px; letter-spacing: .02em; }

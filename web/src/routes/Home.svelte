@@ -1,9 +1,15 @@
 <script>
   import { REVEAL_PENALTY_MS } from '@core/scoring.mjs'
+  import { localDate, prefetchRun, prefetchDaily } from '../lib/api.js'
 
   let { config, user, onStart } = $props()
 
   const MODES = [10, 25, 50, 100, 250, 500]
+
+  // A pointer settling on a button is the earliest honest signal of which run is about
+  // to be asked for, so the fetch starts here and the click finds its words already
+  // in hand. On touch there is no hover, but pointerenter still fires just ahead of
+  // the tap, so the two requests collapse into the same in-flight fetch.
 </script>
 
 <div class="home shell">
@@ -31,14 +37,24 @@
   <section class="pick">
     <div class="modes">
       {#each MODES as m}
-        <button class="mode" onclick={() => onStart({ mode: m })}>
+        <button
+          class="mode"
+          onclick={() => onStart({ mode: m })}
+          onpointerenter={() => prefetchRun(m)}
+          onfocus={() => prefetchRun(m)}
+        >
           <span class="n tabular">{m}</span>
           <span class="w">words</span>
         </button>
       {/each}
     </div>
 
-    <button class="daily" onclick={() => onStart({ mode: 25, daily: true })}>
+    <button
+      class="daily"
+      onclick={() => onStart({ mode: 25, daily: true })}
+      onpointerenter={() => prefetchDaily(25, localDate())}
+      onfocus={() => prefetchDaily(25, localDate())}
+    >
       <span class="d">Daily</span>
       <span class="dsub">25 words, same for everyone, one scored go</span>
     </button>

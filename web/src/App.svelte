@@ -1,5 +1,5 @@
 <script>
-  import { api, localDate, isMobile } from './lib/api.js'
+  import { api, localDate, isMobile, takeRun, takeDaily } from './lib/api.js'
   import { audio, unlock, play } from './lib/audio.svelte.js'
   import { route, go } from './lib/router.svelte.js'
   import Race from './routes/Race.svelte'
@@ -51,14 +51,41 @@
     if (e) { error = e; go(route.path, { replace: true }) }
   })
 
+  /**
+   * The screen answers the click, not the response. Fetching the words used to sit
+   * between the two, which read as a dead button for a whole round trip; now the race
+   * chrome appears immediately with the words still on the wire, and Race treats a
+   * null word list as "not ready yet". On a prefetched path the words are already
+   * here and the gap never renders at all.
+   *
+   * The token does two jobs: it keys the Race component so a new run remounts it
+   * while the pending-to-loaded fill of the SAME run does not (a remount there would
+   * throw away a keypress Race is holding), and it discards a slow response that
+   * arrives after the player has already started a different run.
+   */
+  let runToken = 0
+
   async function start({ mode, daily = false }) {
     unlock()
     error = null
+    outcome = null
+    const date = daily ? localDate() : null
+    const token = ++runToken
+    live = { token, mode, daily: date, seed: null, words: null }
+    go('/race')
     try {
-      live = daily ? await api.daily(mode, localDate()) : await api.newRun(mode)
-      outcome = null
-      go('/race')
-    } catch (e) { error = e.message }
+      const run = await (
+        (daily ? takeDaily(mode, date) : takeRun(mode))
+        ?? (daily ? api.daily(mode, date) : api.newRun(mode))
+      )
+      if (token !== runToken) return
+      live = { ...run, token }
+    } catch (e) {
+      if (token !== runToken) return
+      error = e.message
+      live = null
+      go('/', { replace: true })
+    }
   }
 
   async function finished(run) {
@@ -148,7 +175,7 @@
 
 <main class="page">
   {#if route.path === '/race' && live}
-    {#key live.seed + live.mode}
+    {#key live.token}
       <Race words={live.words} mode={live.mode} seed={live.seed} daily={live.daily} {user} onFinish={finished} />
     {/key}
   {:else if route.path === '/focus'}

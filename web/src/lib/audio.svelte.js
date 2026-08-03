@@ -139,11 +139,57 @@ export function play(name) {
   SYNTH[name]?.()
 }
 
-/** Pronunciation playback. Separate from the cues so muting effects can be a different
- *  decision later if it needs to be. */
+/**
+ * Pronunciation playback. Separate from the cues so muting effects can be a different
+ * decision later if it needs to be.
+ *
+ * The voice used to be an <audio> element whose fetch started at the moment of a
+ * correct answer, so the clip arrived a full round trip late: on the real deployment
+ * (a Pi behind a tunnel) the player was already sounding out the next word over the
+ * previous one. The race now calls preloadSpeech() while a word is still being typed,
+ * and a decoded AudioBuffer starts within the same frame as speak(). The element path
+ * survives underneath as the fallback for anything not preloaded in time.
+ */
 let speech = null
+const clips = new Map() // word -> Promise<AudioBuffer|null>, null meaning no clip exists
+const CLIPS_MAX = 8     // the race only ever needs the current word and the next
+
+export function preloadSpeech(word) {
+  // No context yet means no user gesture yet, and every caller races behind one, so
+  // rather than buffering bytes for a context that may never exist, just decline.
+  if (!word || !ctx || clips.has(word)) return
+  // Insertion order is oldest first, and the words that matter are always the newest
+  // two, so evicting from the front can never throw away a clip still ahead of play.
+  // Without the cap a muted 500 word run would quietly hold 500 decoded buffers.
+  if (clips.size >= CLIPS_MAX) clips.delete(clips.keys().next().value)
+  clips.set(word, (async () => {
+    try {
+      const res = await fetch(`/audio/${encodeURIComponent(word)}.mp3`, { cache: 'force-cache' })
+      if (!res.ok) return null
+      return await ctx.decodeAudioData(await res.arrayBuffer())
+    } catch { return null }
+  })())
+}
+
 export function speak(word) {
   if (state.muted || state.volume <= 0) return
+  const clip = ctx ? clips.get(word) : null
+  if (clip) {
+    clips.delete(word) // spoken once per run, so the map stays two entries deep
+    void clip.then(buf => {
+      if (!buf) return speakViaElement(word)
+      if (ctx.state === 'suspended') void ctx.resume()
+      const src = ctx.createBufferSource()
+      src.buffer = buf
+      src.connect(gainFor(1))
+      src.start()
+    })
+    return
+  }
+  speakViaElement(word)
+}
+
+function speakViaElement(word) {
   speech ??= new Audio()
   speech.volume = state.volume
   speech.src = `/audio/${encodeURIComponent(word)}.mp3`
